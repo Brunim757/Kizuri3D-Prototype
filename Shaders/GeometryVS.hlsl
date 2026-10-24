@@ -23,19 +23,38 @@ struct VSOut
     float2 luv : TEXCOORD4;
     float2 uv2 : TEXCOORD5;
 };
+float3x3 NormalMatrix(float3x3 m)
+{
+    float3 c0 = cross(m[1], m[2]);
+    float3 c1 = cross(m[2], m[0]);
+    float3 c2 = cross(m[0], m[1]);
+    float det = dot(m[0], c0);
+    if (abs(det) < 1e-8) {
+        return m;
+    }
+    return transpose(float3x3(c0, c1, c2) / det);
+}
 VSOut GeoMain(VSIn vin, float4x4 W)
 {
     VSOut vout;
     float4 wp = mul(float4(vin.pos, 1.0), W);
     vout.wpos = wp.xyz;
     float3x3 wrot = (float3x3)W;
-    vout.wnrm = normalize(mul(vin.nrm, wrot));
+    float3x3 nrot = NormalMatrix(wrot);
+    vout.wnrm = normalize(mul(vin.nrm, nrot));
     float4 vp = mul(wp, View);
     vout.pos = mul(vp, Proj);
     vout.uv = vin.uv;
     vout.luv = vin.uv2;
     vout.uv2 = vin.uv2;
-    float3 wt = normalize(mul(vin.tan.xyz, wrot));
+    float3 wt = mul(vin.tan.xyz, wrot);
+    wt -= vout.wnrm * dot(wt, vout.wnrm);
+    float wtl = length(wt);
+    if (wtl > 1e-6) {
+        wt /= wtl;
+    } else {
+        wt = normalize(cross(vout.wnrm, abs(vout.wnrm.y) < 0.99 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0)));
+    }
     vout.wtan = float4(wt, vin.tan.w);
     float3 wb = cross(vout.wnrm, wt) * vin.tan.w;
     float3 camW = -mul(View[3].xyz, transpose((float3x3)View));
