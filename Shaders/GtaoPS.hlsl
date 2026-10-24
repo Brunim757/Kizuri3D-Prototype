@@ -17,6 +17,8 @@ float3 GtaoSlice(float3 P, float3 N, float3 V, float3 T, float radius, float2 uv
     occDir = float3(0.0, 0.0, 0.0);
     float bestP = -1.0;
     float bestN = -1.0;
+    int nP = 0;
+    int nN = 0;
     for (int side = -1; side <= 1; side += 2) {
         for (int st = 1; st <= 4; ++st) {
             float t = radius * (float)st / 4.0;
@@ -35,13 +37,15 @@ float3 GtaoSlice(float3 P, float3 N, float3 V, float3 T, float radius, float2 uv
             float cosH = dot(H / sqrt(d2), V) - 0.06 * t / sqrt(d2);
             if (side > 0) {
                 bestP = max(bestP, cosH);
+                nP += 1;
             } else {
                 bestN = max(bestN, cosH);
+                nN += 1;
             }
         }
     }
-    float occP = saturate((1.0 - bestP) * 0.5);
-    float occN = saturate((1.0 - bestN) * 0.5);
+    float occP = nP > 0 ? saturate((1.0 - bestP) * 0.5) : 0.0;
+    float occN = nN > 0 ? saturate((1.0 - bestN) * 0.5) : 0.0;
     occDir = T * (occP - occN);
     return float3(occP, occN, 0.0);
 }
