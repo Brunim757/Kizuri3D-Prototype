@@ -59,7 +59,7 @@ PSOut main(PSIn pin)
     }
     float3 dn = normalize(DecalWorldN.xyz);
     o.nrmRough = float4(dn * 0.5 + 0.5, DecalMat.y);
-    o.metallic = float4(DecalMat.z, DecalMat.z, DecalMat.z, 1.0);
+    o.metallic = float4(DecalMat.z, 0.0, 0.0, 1.0);
     o.emissive = float4(tex.rgb * step(7.5, DecalMat.x + 0.5), 1.0);
     return o;
 }
