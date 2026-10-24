@@ -19,6 +19,7 @@ struct PhysBodyDesc {
   float mass = 1.0f;
   PhysColliderType collider = PhysColliderType::Box;
   float extents[3] = { 0.5f, 0.5f, 0.5f };
+  float scale[3] = { 1.0f, 1.0f, 1.0f };
   const float* meshVerts = nullptr;
   size_t meshVertCount = 0;
   const uint32_t* meshIndices = nullptr;

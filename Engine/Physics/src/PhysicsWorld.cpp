@@ -188,19 +188,25 @@ uint32_t PhysicsWorld::CreateBody(const PhysBodyDesc& desc, const float pos[3], 
   float hx = desc.extents[0] > 0.01f ? desc.extents[0] : 0.01f;
   float hy = desc.extents[1] > 0.01f ? desc.extents[1] : 0.01f;
   float hz = desc.extents[2] > 0.01f ? desc.extents[2] : 0.01f;
+  float sx = std::fabs(desc.scale[0]);
+  float sy = std::fabs(desc.scale[1]);
+  float sz = std::fabs(desc.scale[2]);
+  sx = sx > 1e-4f ? sx : 1e-4f;
+  sy = sy > 1e-4f ? sy : 1e-4f;
+  sz = sz > 1e-4f ? sz : 1e-4f;
   JPH::Shape::ShapeResult shapeResult;
   JPH::ShapeRefC shape;
   if (desc.collider == PhysColliderType::Sphere) {
-    JPH::SphereShapeSettings sphere(hx);
+    JPH::SphereShapeSettings sphere(hx * (sx > sy ? (sx > sz ? sx : sz) : (sy > sz ? sy : sz)));
     shapeResult = sphere.Create();
   } else if (desc.collider == PhysColliderType::Capsule) {
-    JPH::CapsuleShapeSettings capsule(hy, hx);
+    JPH::CapsuleShapeSettings capsule(hy * sy, hx * (sx > sz ? sx : sz));
     shapeResult = capsule.Create();
   } else if (desc.collider == PhysColliderType::Mesh && desc.meshVerts != nullptr && desc.meshIndices != nullptr && desc.meshVertCount > 0 && desc.meshIndexCount >= 3) {
     JPH::VertexList verts;
     verts.reserve(desc.meshVertCount);
     for (size_t i = 0; i < desc.meshVertCount; ++i) {
-      verts.emplace_back(desc.meshVerts[i * 3 + 0], desc.meshVerts[i * 3 + 1], desc.meshVerts[i * 3 + 2]);
+      verts.emplace_back(desc.meshVerts[i * 3 + 0] * sx, desc.meshVerts[i * 3 + 1] * sy, desc.meshVerts[i * 3 + 2] * sz);
     }
     JPH::IndexedTriangleList tris;
     tris.reserve(desc.meshIndexCount / 3);
@@ -210,7 +216,7 @@ uint32_t PhysicsWorld::CreateBody(const PhysBodyDesc& desc, const float pos[3], 
     JPH::MeshShapeSettings mesh(std::move(verts), std::move(tris));
     shapeResult = mesh.Create();
   } else {
-    JPH::BoxShapeSettings box(JPH::Vec3(hx, hy, hz));
+    JPH::BoxShapeSettings box(JPH::Vec3(hx * sx, hy * sy, hz * sz));
     shapeResult = box.Create();
   }
   if (shapeResult.HasError()) {

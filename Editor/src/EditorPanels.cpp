@@ -614,7 +614,7 @@ static void ComposeMatrixPQ(const float pos[3], const float quat[4], const float
   m[14] = pos[2];
   m[15] = 1.0f;
 }
-static uint64_t RigidbodyDescHash(const RigidbodyData& r, const std::string& meshGuid) {
+static uint64_t RigidbodyDescHash(const RigidbodyData& r, const std::string& meshGuid, const float scale[3]) {
   uint64_t h = 1469598103934665603ull;
   auto mix = [&h](const void* data, size_t bytes) {
     const unsigned char* p = reinterpret_cast<const unsigned char*>(data);
@@ -627,6 +627,7 @@ static uint64_t RigidbodyDescHash(const RigidbodyData& r, const std::string& mes
   mix(&r.mass, sizeof(r.mass));
   mix(&r.colliderType, sizeof(r.colliderType));
   mix(r.extents, sizeof(r.extents));
+  mix(scale, sizeof(float) * 3);
   mix(&r.friction, sizeof(r.friction));
   mix(&r.restitution, sizeof(r.restitution));
   mix(meshGuid.data(), meshGuid.size());
@@ -1276,7 +1277,7 @@ void EditorApp::SyncPhysics(float dt) {
     const std::string meshGuid = meshGuidPtr != nullptr ? *meshGuidPtr : std::string();
     float equat[4];
     EulerDegToQuat(transform->rotation, equat);
-    uint64_t h = RigidbodyDescHash(*rigidbody, meshGuid);
+    uint64_t h = RigidbodyDescHash(*rigidbody, meshGuid, transform->scale);
     auto it = physBodies.find(entity.Id());
     bool recreate = it == physBodies.end() || it->second.descHash != h || !physWorld.HasBody(it->second.body);
     if (recreate) {
@@ -1290,6 +1291,9 @@ void EditorApp::SyncPhysics(float dt) {
       desc.extents[0] = rigidbody->extents[0];
       desc.extents[1] = rigidbody->extents[1];
       desc.extents[2] = rigidbody->extents[2];
+      desc.scale[0] = transform->scale[0];
+      desc.scale[1] = transform->scale[1];
+      desc.scale[2] = transform->scale[2];
       const MeshRecord* mrec = nullptr;
       if (rigidbody->colliderType == 3 && !meshGuid.empty()) {
         mrec = assets.GetByGuid(meshGuid);

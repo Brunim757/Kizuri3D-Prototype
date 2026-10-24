@@ -3108,6 +3108,49 @@ bool TestPhysicsFloor() {
   jobs.Shutdown();
   return ok;
 }
+bool TestPhysicsScaledFloor() {
+  Kizuri::JobSystem jobs;
+  if (!jobs.Initialize()) {
+    return false;
+  }
+  Kizuri::PhysicsWorld world;
+  if (!world.Initialize(&jobs)) {
+    jobs.Shutdown();
+    return false;
+  }
+  Kizuri::PhysBodyDesc floor;
+  floor.motion = Kizuri::PhysMotionType::Static;
+  floor.collider = Kizuri::PhysColliderType::Box;
+  floor.extents[0] = 0.5f;
+  floor.extents[1] = 0.5f;
+  floor.extents[2] = 0.5f;
+  floor.scale[0] = 10.0f;
+  floor.scale[1] = 1.0f;
+  floor.scale[2] = 10.0f;
+  float fpos[3] = { 0.0f, -0.5f, 0.0f };
+  float fquat[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+  uint32_t floorBody = world.CreateBody(floor, fpos, fquat);
+  Kizuri::PhysBodyDesc box;
+  box.motion = Kizuri::PhysMotionType::Dynamic;
+  box.mass = 2.0f;
+  box.collider = Kizuri::PhysColliderType::Box;
+  box.extents[0] = 0.5f;
+  box.extents[1] = 0.5f;
+  box.extents[2] = 0.5f;
+  float bpos[3] = { 4.0f, 5.0f, 0.0f };
+  float bquat[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+  uint32_t boxBody = world.CreateBody(box, bpos, bquat);
+  bool ok = floorBody != 0xFFFFFFFFu && boxBody != 0xFFFFFFFFu;
+  for (int i = 0; i < 300 && ok; ++i) {
+    world.Step(1.0f / 60.0f);
+  }
+  float p1[3] = { 0.0f, 0.0f, 0.0f };
+  float q1[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+  ok = ok && world.GetPose(boxBody, p1, q1) && p1[1] > 0.3f && p1[1] < 0.7f;
+  world.Shutdown();
+  jobs.Shutdown();
+  return ok;
+}
 bool TestPhysicsRaycast() {
   Kizuri::JobSystem jobs;
   if (!jobs.Initialize()) {
@@ -11095,6 +11138,7 @@ int main() {
   failures += Check("MeshValidation", TestMeshValidation());
   failures += Check("PhysicsFall", TestPhysicsFall());
   failures += Check("PhysicsFloor", TestPhysicsFloor());
+  failures += Check("PhysicsScaledFloor", TestPhysicsScaledFloor());
   failures += Check("PhysicsRaycast", TestPhysicsRaycast());
   failures += Check("AudioClipDecode", TestAudioClipDecode());
   failures += Check("AudioMixerBuses", TestAudioMixerBuses());
