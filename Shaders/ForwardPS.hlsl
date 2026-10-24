@@ -121,6 +121,17 @@ float GaSchlickGGX(float cosLi, float cosLo, float roughness)
     float k = (r * r) / 8.0;
     return GaSchlickG1(cosLi, k) * GaSchlickG1(cosLo, k);
 }
+float ApplyAttenuation(float dist, float range)
+{
+    if (Counts.y < 0.5) {
+        return pow(saturate(1.0 - (dist * dist) / max(range * range, 1e-6)), 2.0);
+    } else if (Counts.y < 1.5) {
+        float phys = 1.0 / (dist * dist + 1.0);
+        float win = saturate(1.0 - (dist * dist) / max(range * range, 1e-6));
+        return phys * win;
+    }
+    return saturate(1.0 - dist / max(range, 1e-4));
+}
 bool FogRayBox(float3 origin, float3 dir, float3 bmin, float3 bmax, out float t0, out float t1)
 {
     float3 d = dir;
@@ -354,7 +365,7 @@ float4 main(PSIn pin) : SV_Target
             float dist = length(toLight);
             float3 L = toLight / max(dist, 1e-4);
             float range = max(LightB[i].w, 1e-3);
-            float att = pow(saturate(1.0 - (dist * dist) / (range * range)), 2.0);
+            float att = ApplyAttenuation(dist, range);
             float spot = 1.0;
             if (kind > 0.5) {
                 float cosT = dot(L, -LightB[i].xyz);
