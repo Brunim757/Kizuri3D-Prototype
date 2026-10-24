@@ -3,7 +3,7 @@ cbuffer SssCB : register(b0)
     float4 SssInfo;
 };
 Texture2D LitTX : register(t0);
-Texture2D F0TXs : register(t1);
+Texture2D MetalTX : register(t1);
 Texture2D MatTableTX : register(t2);
 SamplerState LinearSampler : register(s0);
 struct PSIn
@@ -14,8 +14,8 @@ struct PSIn
 float4 main(PSIn pin) : SV_Target
 {
     float3 orig = LitTX.Sample(LinearSampler, pin.uv).rgb;
-    float4 metalFull = F0TXs.SampleLevel(LinearSampler, pin.uv, 0);
-    uint matID = (uint) (metalFull.a * 255.0 + 0.5);
+    float4 matFull = MetalTX.Load(int3((int)pin.pos.x, (int)pin.pos.y, 0));
+    uint matID = (uint) (matFull.a * 255.0 + 0.5);
     if (matID > 255u) {
         matID = 255u;
     }

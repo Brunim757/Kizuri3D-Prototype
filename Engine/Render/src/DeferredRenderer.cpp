@@ -4844,7 +4844,7 @@ void DeferredRenderer::BuildHzb(const float camPos[3]) {
   rhi->EndEvent();
 }
 void DeferredRenderer::RunSsssBlur() {
-  if (rhi == nullptr || sssBlurPS == 0 || sssBlurCB == 0 || sssBlurA == 0 || sssBlurB == 0 || gLight == 0 || gF0 == 0) {
+  if (rhi == nullptr || sssBlurPS == 0 || sssBlurCB == 0 || sssBlurA == 0 || sssBlurB == 0 || gLight == 0 || gMetallic == 0) {
     return;
   }
   bool active = false;
@@ -4880,7 +4880,7 @@ void DeferredRenderer::RunSsssBlur() {
   rhi->UpdateConstantBuffer(sssBlurCB, &cbx, sizeof(cbx));
   rhi->SetPixelConstantBuffer(0, sssBlurCB);
   rhi->SetPixelTexture(0, gLight);
-  rhi->SetPixelTexture(1, gF0);
+  rhi->SetPixelTexture(1, gMetallic);
   rhi->SetPixelTexture2D(2, matTable);
   rhi->SetRenderTargets(1, &sssBlurA, 0);
   NoteFullscreen();
@@ -4888,7 +4888,7 @@ void DeferredRenderer::RunSsssBlur() {
   rhi->UpdateConstantBuffer(sssBlurCB, &cby, sizeof(cby));
   rhi->SetPixelConstantBuffer(0, sssBlurCB);
   rhi->SetPixelTexture(0, sssBlurA);
-  rhi->SetPixelTexture(1, gF0);
+  rhi->SetPixelTexture(1, gMetallic);
   rhi->SetPixelTexture2D(2, matTable);
   rhi->SetRenderTargets(1, &gLight, 0);
   NoteFullscreen();
