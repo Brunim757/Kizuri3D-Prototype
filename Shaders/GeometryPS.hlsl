@@ -285,10 +285,10 @@ PSOut main(PSIn pin)
         rough = lerp(rough, ExtI.z, lw);
         metal = lerp(metal, ExtI.w, lw);
     }
-    pout.albedo = float4(alb * occ, avec.x * 0.5 + 0.5);
+    pout.albedo = float4(alb * occ, avec.x);
     pout.nrmRough = float4(n, rough);
     pout.metallic = float4(metal, sheenR, iri, ExtE.w / 255.0);
-    pout.wpos = float4(pin.wpos, avec.y * 0.5 + 0.5);
+    pout.wpos = float4(pin.wpos, avec.y);
     float3 lmIrr = float3(0.0, 0.0, 0.0);
     if ((flags & 16u) != 0u) {
         lmIrr = LightmapTex.Sample(GeoSamp, pin.luv).rgb * Extra.x;
