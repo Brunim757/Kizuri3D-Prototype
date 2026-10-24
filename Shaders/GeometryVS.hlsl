@@ -32,7 +32,7 @@ float3x3 NormalMatrix(float3x3 m)
     if (abs(det) < 1e-8) {
         return m;
     }
-    return transpose(float3x3(c0, c1, c2) / det);
+    return float3x3(c0, c1, c2) / det;
 }
 VSOut GeoMain(VSIn vin, float4x4 W)
 {
