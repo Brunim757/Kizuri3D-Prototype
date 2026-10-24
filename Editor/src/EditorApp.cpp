@@ -193,6 +193,9 @@ EditorApp::EditorApp()
   assetRenameIsTex = false;
   browserSearch[0] = '\0';
   browserFilter = 0;
+  browserListMode = true;
+  browserShowTree = true;
+  browserShowPreview = false;
   selectedAssetIsTex = false;
   forceDeleteIsTex = false;
   defaultVB = 0;
@@ -558,11 +561,11 @@ bool EditorApp::Initialize() {
         std::getline(vf, ver);
       }
     }
-    if (ver != "dock3") {
+    if (ver != "dock4") {
       std::remove(layoutFilePath.c_str());
       std::ofstream vf(verPath);
       if (vf) {
-        vf << "dock3";
+        vf << "dock4";
       }
       dockLayoutBuilt = false;
     }
@@ -1067,7 +1070,7 @@ void EditorApp::DrawDockHost() {
     ImGuiID center = dockId;
     dockLeftId = static_cast<uint32_t>(ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.20f, nullptr, &center));
     dockRightId = static_cast<uint32_t>(ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.24f, nullptr, &center));
-    dockBottomId = static_cast<uint32_t>(ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.28f, nullptr, &center));
+    dockBottomId = static_cast<uint32_t>(ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.22f, nullptr, &center));
     dockCenterId = static_cast<uint32_t>(center);
     ImGui::DockBuilderDockWindow("Hierarchy", dockLeftId);
     ImGui::DockBuilderDockWindow("Inspector", dockRightId);

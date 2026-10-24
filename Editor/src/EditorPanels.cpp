@@ -4237,20 +4237,32 @@ void EditorApp::DrawAssetBrowser() {
     assets.Scan();
   }
   ImGui::SameLine();
-  ImGui::Text("%s", assets.AssetsDir().c_str());
+  ImGui::Checkbox("Pastas", &browserShowTree);
+  ImGui::SameLine();
+  ImGui::Checkbox("Detalhes", &browserShowPreview);
+  ImGui::SameLine();
+  if (ImGui::RadioButton("Lista", browserListMode)) {
+    browserListMode = true;
+  }
+  ImGui::SameLine();
+  if (ImGui::RadioButton("Grade", !browserListMode)) {
+    browserListMode = false;
+  }
   std::vector<std::pair<std::string, int>> importing = assets.ImportingNow();
   for (size_t i = 0; i < importing.size(); ++i) {
-    ImGui::Text("Importing %s... %d%%", importing[i].first.c_str(), importing[i].second);
+    ImGui::Text("Importando %s... %d%%", importing[i].first.c_str(), importing[i].second);
   }
   ImGui::Separator();
   std::string root = assets.AssetsDir();
   if (browserPath.empty() || browserPath.size() < root.size() || browserPath.compare(0, root.size(), root) != 0) {
     browserPath = root;
   }
-  ImGui::InputText("Search", browserSearch, sizeof(browserSearch));
+  ImGui::SetNextItemWidth(210.0f);
+  ImGui::InputTextWithHint("##assetSearch", "Buscar asset...", browserSearch, sizeof(browserSearch));
   ImGui::SameLine();
   int bf = browserFilter < 0 ? 0 : (browserFilter > 4 ? 4 : browserFilter);
-  if (ImGui::Combo("Type", &bf, "All\0Meshes\0Textures\0Scenes\0Sources\0")) {
+  ImGui::SetNextItemWidth(120.0f);
+  if (ImGui::Combo("##assetType", &bf, "Todos\0Malhas\0Texturas\0Cenas\0Fontes\0")) {
     browserFilter = bf;
   }
   ImGui::SameLine();
@@ -4264,7 +4276,7 @@ void EditorApp::DrawAssetBrowser() {
       ImGui::TextDisabled("Indexando %u...", static_cast<unsigned>(pend));
     } else {
       ImGui::SameLine();
-      ImGui::TextDisabled("%u meshes, %u tex", static_cast<unsigned>(assets.AllGuids().size()), static_cast<unsigned>(assets.AllTexGuids().size()));
+      ImGui::TextDisabled("%u malhas, %u texturas", static_cast<unsigned>(assets.AllGuids().size()), static_cast<unsigned>(assets.AllTexGuids().size()));
     }
   }
   if (ImGui::BeginPopup("BrowserCreate")) {
@@ -4377,8 +4389,9 @@ void EditorApp::DrawAssetBrowser() {
       log.Add(LogLevel::Success, std::string("LUT loaded: ") + fn);
     }
   };
-  float previewH = 150.0f;
-  ImGui::BeginChild("BrTree", ImVec2(205.0f, -previewH), true);
+  float previewH = browserShowPreview ? 96.0f : 0.0f;
+  if (browserShowTree) {
+    ImGui::BeginChild("BrTree", ImVec2(180.0f, -previewH), true);
   std::function<void(const std::string&, int)> drawTreeDir = [&](const std::string& dir, int depth) {
     if (depth > 8) {
       return;
@@ -4434,8 +4447,9 @@ void EditorApp::DrawAssetBrowser() {
     }
     ImGui::PopID();
   }
-  ImGui::EndChild();
-  ImGui::SameLine();
+    ImGui::EndChild();
+    ImGui::SameLine();
+  }
   ImGui::BeginChild("BrMain", ImVec2(0, -previewH), true);
   {
     std::string rel = browserPath.size() > root.size() ? browserPath.substr(root.size()) : "";
@@ -4562,7 +4576,7 @@ void EditorApp::DrawAssetBrowser() {
     });
   }
   float availX = ImGui::GetContentRegionAvail().x;
-  int cols = availX > 130.0f ? static_cast<int>(availX / 120.0f) : 1;
+  int cols = browserListMode ? 1 : (availX > 130.0f ? static_cast<int>(availX / 120.0f) : 1);
   if (cols < 1) {
     cols = 1;
   }
@@ -4604,7 +4618,10 @@ void EditorApp::DrawAssetBrowser() {
     folderImages.swap(keptImages);
   }
   int gridIdx = 0;
-  auto gridNext = [&gridIdx, cols]() {
+  auto gridNext = [&gridIdx, cols, this]() {
+    if (browserListMode) {
+      return;
+    }
     ++gridIdx;
     if (gridIdx % cols != 0) {
       ImGui::SameLine();
@@ -4716,6 +4733,7 @@ void EditorApp::DrawAssetBrowser() {
     return std::filesystem::path(a.path).filename().string() < std::filesystem::path(b.path).filename().string();
   });
   int uid = 600000;
+  ImVec2 tileSize = browserListMode ? ImVec2(38.0f, 22.0f) : ImVec2(96.0f, 64.0f);
   for (size_t i = 0; i < items.size(); ++i) {
     const BrEntry& it = items[i];
     if (it.kind == 0) {
@@ -4724,7 +4742,7 @@ void EditorApp::DrawAssetBrowser() {
       ImGui::BeginGroup();
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.36f, 0.16f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.55f, 0.44f, 0.20f, 1.0f));
-      ImGui::Button("Folder", ImVec2(96, 64));
+      ImGui::Button(browserListMode ? "DIR" : "Folder", tileSize);
       ImGui::PopStyleColor(2);
       if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         browserPath = it.path;
@@ -4732,6 +4750,9 @@ void EditorApp::DrawAssetBrowser() {
       }
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         browserSelPath = it.path;
+      }
+      if (browserListMode) {
+        ImGui::SameLine();
       }
       ImGui::Text("%s", shortName(fn).c_str());
       ImGui::EndGroup();
@@ -4765,7 +4786,7 @@ void EditorApp::DrawAssetBrowser() {
       } else {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.32f, 0.52f, 1.0f));
       }
-      ImGui::Button("Mesh", ImVec2(96, 64));
+      ImGui::Button(browserListMode ? "MSH" : "Mesh", tileSize);
       ImGui::PopStyleColor();
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         selectedAssetGuid = rec->guid;
@@ -4780,9 +4801,15 @@ void EditorApp::DrawAssetBrowser() {
         ImGui::Text("%s", fn.c_str());
         ImGui::EndDragDropSource();
       }
+      if (browserListMode) {
+        ImGui::SameLine();
+      }
       ImGui::Text("%s", stemName(fn).c_str());
       const char* tag = meshTag(rec);
       if (tag[0] != '\0') {
+        if (browserListMode) {
+          ImGui::SameLine();
+        }
         ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.0f, 1.0f), "%s", tag);
       }
       ImGui::EndGroup();
@@ -4868,7 +4895,7 @@ void EditorApp::DrawAssetBrowser() {
         if (sel) {
           ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.35f, 0.45f, 0.65f, 1.0f));
         }
-        pressed = ImGui::ImageButton("tx", reinterpret_cast<ImTextureID>(thumbSrv), ImVec2(96, 64));
+        pressed = ImGui::ImageButton("tx", reinterpret_cast<ImTextureID>(thumbSrv), tileSize);
         if (sel) {
           ImGui::PopStyleColor();
         }
@@ -4878,7 +4905,7 @@ void EditorApp::DrawAssetBrowser() {
         } else {
           ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.14f, 0.42f, 0.28f, 1.0f));
         }
-        pressed = ImGui::Button("Tex", ImVec2(96, 64));
+        pressed = ImGui::Button(browserListMode ? "TEX" : "Tex", tileSize);
         ImGui::PopStyleColor();
       }
       (void)pressed;
@@ -4892,7 +4919,14 @@ void EditorApp::DrawAssetBrowser() {
         ImGui::Text("%s", fn.c_str());
         ImGui::EndDragDropSource();
       }
+      if (browserListMode) {
+        ImGui::SameLine();
+      }
       ImGui::Text("%s", stemName(fn).c_str());
+      if (browserListMode) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%dx%d", rec->data.width, rec->data.height);
+      }
       ImGui::EndGroup();
       if (ImGui::BeginPopupContextItem("TexCtx")) {
         bool canReimport = rec->hasSource;
@@ -4956,9 +4990,15 @@ void EditorApp::DrawAssetBrowser() {
       ImGui::BeginGroup();
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.42f, 0.24f, 0.14f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.52f, 0.30f, 0.18f, 1.0f));
-      ImGui::Button("Source", ImVec2(96, 64));
+      ImGui::Button(browserListMode ? "SRC" : "Source", tileSize);
       ImGui::PopStyleColor(2);
+      if (browserListMode) {
+        ImGui::SameLine();
+      }
       ImGui::Text("%s", stemName(fn).c_str());
+      if (browserListMode) {
+        ImGui::SameLine();
+      }
       ImGui::TextDisabled("%s", ready ? "[READY]" : "[PENDING]");
       ImGui::EndGroup();
       ImGui::PopID();
@@ -4968,13 +5008,16 @@ void EditorApp::DrawAssetBrowser() {
       ImGui::BeginGroup();
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.30f, 0.22f, 0.48f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.38f, 0.28f, 0.58f, 1.0f));
-      ImGui::Button("Scene", ImVec2(96, 64));
+      ImGui::Button(browserListMode ? "SCN" : "Scene", tileSize);
       ImGui::PopStyleColor(2);
       if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         DoOpenPath(it.path);
       }
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         browserSelPath = it.path;
+      }
+      if (browserListMode) {
+        ImGui::SameLine();
       }
       ImGui::Text("%s", shortName(fn).c_str());
       ImGui::EndGroup();
@@ -4987,13 +5030,16 @@ void EditorApp::DrawAssetBrowser() {
       ImGui::BeginGroup();
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.30f, 0.55f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.38f, 0.66f, 1.0f));
-      ImGui::Button(isHdr ? "HDR Sky" : "Image", ImVec2(96, 64));
+      ImGui::Button(browserListMode ? (isHdr ? "HDR" : "IMG") : (isHdr ? "HDR Sky" : "Image"), tileSize);
       ImGui::PopStyleColor(2);
       if (isHdr && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         loadHdrSky(it.path, fn);
       }
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         browserSelPath = it.path;
+      }
+      if (browserListMode) {
+        ImGui::SameLine();
       }
       ImGui::Text("%s", shortName(fn).c_str());
       ImGui::EndGroup();
@@ -5007,7 +5053,7 @@ void EditorApp::DrawAssetBrowser() {
       ImGui::BeginGroup();
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.32f, 0.32f, 0.34f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.40f, 0.40f, 0.42f, 1.0f));
-      ImGui::Button(isCube ? "LUT" : (isShader ? "Shader" : "File"), ImVec2(96, 64));
+      ImGui::Button(browserListMode ? (isCube ? "LUT" : (isShader ? "SHDR" : "FILE")) : (isCube ? "LUT" : (isShader ? "Shader" : "File")), tileSize);
       ImGui::PopStyleColor(2);
       if (isCube && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         loadCineLut(it.path, fn);
@@ -5018,6 +5064,9 @@ void EditorApp::DrawAssetBrowser() {
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         browserSelPath = it.path;
       }
+      if (browserListMode) {
+        ImGui::SameLine();
+      }
       ImGui::Text("%s", shortName(fn).c_str());
       ImGui::EndGroup();
       ImGui::PopID();
@@ -5025,8 +5074,8 @@ void EditorApp::DrawAssetBrowser() {
     gridNext();
   }
   ImGui::EndChild();
-  ImGui::BeginChild("BrPreview", ImVec2(0, 0), true);
-  {
+  if (browserShowPreview) {
+    ImGui::BeginChild("BrPreview", ImVec2(0, 0), true);
     const MeshRecord* pm = !selectedAssetGuid.empty() && !selectedAssetIsTex ? assets.GetByGuid(selectedAssetGuid) : nullptr;
     const TextureRecord* pt = !selectedAssetGuid.empty() && selectedAssetIsTex ? assets.GetTexByGuid(selectedAssetGuid) : nullptr;
     if (pm != nullptr) {
@@ -5037,13 +5086,13 @@ void EditorApp::DrawAssetBrowser() {
         CreateEntityAt(0.0f, 0.0f, 0.0f, pm->guid);
       }
       ImGui::SameLine();
-      ImGui::TextDisabled("double-click a tile also adds it");
+      ImGui::TextDisabled("Duplo clique no item tambem adiciona");
     } else if (pt != nullptr) {
       if (pt->gpu != 0 && rhi != nullptr) {
         void* psrv = rhi->GetTextureSRV(pt->gpu);
         if (psrv != nullptr) {
           float avail = ImGui::GetContentRegionAvail().x;
-          float side = avail > 110.0f ? 110.0f : avail;
+          float side = avail > 64.0f ? 64.0f : avail;
           if (side > 32.0f) {
             ImGui::Image(reinterpret_cast<ImTextureID>(psrv), ImVec2(side, side));
             ImGui::SameLine();
@@ -5102,8 +5151,8 @@ void EditorApp::DrawAssetBrowser() {
     } else {
       ImGui::TextDisabled("Select an asset: drag meshes into the viewport, double-click HDR/LUT/scene.");
     }
+    ImGui::EndChild();
   }
-  ImGui::EndChild();
   if (ImGui::BeginPopupModal("Force Delete?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::Text("Force delete? Dependents will show missing asset.");
     if (ImGui::Button("Force")) {

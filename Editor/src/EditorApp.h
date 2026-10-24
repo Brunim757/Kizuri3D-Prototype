@@ -253,6 +253,9 @@ struct EditorApp {
   std::string browserPath;
   char browserSearch[128];
   int browserFilter;
+  bool browserListMode;
+  bool browserShowTree;
+  bool browserShowPreview;
   std::string browserSelPath;
   std::string forceDeleteGuid;
   bool forceDeleteIsTex;
