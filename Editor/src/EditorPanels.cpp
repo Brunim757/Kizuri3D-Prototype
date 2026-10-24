@@ -3011,7 +3011,7 @@ void EditorApp::DrawHierarchyTree(EntityId parent, int depth, const std::map<uin
         ImGui::EndDragDropTarget();
       }
     }
-    if (open) {
+    if (open && hasChildren) {
       DrawHierarchyTree(id, depth + 1, byParent, filter);
       ImGui::TreePop();
     }
