@@ -345,9 +345,6 @@ float4 main(PSIn pin) : SV_Target
         count = 16;
     }
     int fcount = clamp((int)FwdCount.x, 0, 16);
-    if (fcount == 0) {
-        fcount = count;
-    }
     [loop]
     for (int k = 0; k < fcount; ++k) {
         int i = clamp((int)FwdIdx[k >> 2][k & 3], 0, 15);
