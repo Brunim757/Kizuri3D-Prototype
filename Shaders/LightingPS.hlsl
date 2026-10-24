@@ -467,46 +467,75 @@ float CascadeShadowSingle(float3 wpos, float3 nrm)
     }
     return 1.0;
 }
-float3 ApplyFog(float3 col, float3 rayDir, float tMax, float2 suv)
+bool FogRayBox(float3 origin, float3 dir, float3 bmin, float3 bmax, out float t0, out float t1)
+{
+    float3 d = dir;
+    d.x = abs(d.x) < 1e-6 ? 1e-6 : d.x;
+    d.y = abs(d.y) < 1e-6 ? 1e-6 : d.y;
+    d.z = abs(d.z) < 1e-6 ? 1e-6 : d.z;
+    float3 inv = 1.0 / d;
+    float3 ta = (bmin - origin) * inv;
+    float3 tb = (bmax - origin) * inv;
+    float3 tmin = min(ta, tb);
+    float3 tmax = max(ta, tb);
+    t0 = max(max(tmin.x, tmin.y), tmin.z);
+    t1 = min(min(tmax.x, tmax.y), tmax.z);
+    return t1 > max(t0, 0.0);
+}
+float3 ApplyFog(float3 col, float3 rayDir, float tMax)
 {
     float dens = FogInfo.y;
-    float stepLen = tMax / 8.0;
-    float h = frac(sin(dot(suv, float2(12.9898, 78.233))) * 43758.5453);
     float3 toSun = normalize(SkySun.xyz);
     float3 sunCol = SkyColor.rgb * max(SkySun.w, 0.0);
     float cosT = max(dot(rayDir, toSun), 0.0);
     float ph = 0.15 + 0.85 * pow(cosT, 8.0);
-    float trans = 1.0;
-    float3 insc = float3(0.0, 0.0, 0.0);
-    for (int s = 0; s < 8; ++s) {
-        float tt = min(h * stepLen + ((float)s + 0.5) * stepLen, tMax);
-        float3 p = CamPos.xyz + rayDir * tt;
+    float heightScale = 1.0;
+    if (FogInfo.z > 1e-6) {
+        float avgY = CamPos.y + rayDir.y * tMax * 0.5;
+        heightScale = exp(-max(avgY - FogInfo.w, 0.0) * FogInfo.z);
+    }
+    float globalDensity = dens * heightScale;
+    float trans = exp(-globalDensity * tMax);
+    float3 insc = FogColor.rgb * (1.0 - trans);
+    insc += (sunCol * ph + AmbientProbe.rgb) * (1.0 - trans) * 0.12;
+    for (int fv = 0; fv < 4; ++fv) {
+        float vd = FogVolMin[fv].w;
+        if (vd <= 0.0) {
+            continue;
+        }
+        float3 bmin = FogVolMin[fv].xyz;
+        float3 bmax = FogVolMax[fv].xyz;
+        float t0;
+        float t1;
+        if (!FogRayBox(CamPos.xyz, rayDir, bmin, bmax, t0, t1)) {
+            continue;
+        }
+        t0 = max(t0, 0.0);
+        t1 = min(t1, tMax);
+        if (t1 <= t0) {
+            continue;
+        }
+        float3 center = (bmin + bmax) * 0.5;
+        float3 halfSize = max((bmax - bmin) * 0.5, float3(1e-4, 1e-4, 1e-4));
         float sh = 1.0;
         if (ShadowInfo.y > 0.5) {
-            sh = CascadeShadowSingle(p, float3(0.0, 0.0, 0.0));
+            float3 sp = CamPos.xyz + rayDir * ((t0 + t1) * 0.5);
+            sh = CascadeShadowSingle(sp, float3(0.0, 1.0, 0.0));
         }
-        float densAt = dens;
-        if (FogInfo.z > 1e-6) {
-            densAt = dens * exp(-max(p.y - FogInfo.w, 0.0) * FogInfo.z);
+        float3 volLight = FogVolCol[fv].rgb * (sunCol * ph * sh * 0.65 + AmbientProbe.rgb * 0.35);
+        float stepLen = (t1 - t0) / 8.0;
+        float vTrans = 1.0;
+        float3 vInsc = float3(0.0, 0.0, 0.0);
+        for (int s = 0; s < 8; ++s) {
+            float3 p = CamPos.xyz + rayDir * (t0 + ((float)s + 0.5) * stepLen);
+            float3 q = abs(p - center) / halfSize;
+            float edge = 1.0 - max(q.x, max(q.y, q.z));
+            float localDensity = vd * smoothstep(0.0, 0.35, edge);
+            vInsc += vTrans * volLight * localDensity * stepLen;
+            vTrans *= exp(-localDensity * stepLen);
         }
-        float3 S = (sunCol * ph * sh + FogColor.rgb * 0.15) * densAt;
-        float aerial = saturate((p.y - FogInfo.w) * 0.015);
-        S = lerp(S, SkyColor.rgb * (0.25 + 0.5 * aerial) * densAt, aerial * 0.6);
-        for (int fv = 0; fv < 4; ++fv) {
-            if (FogVolMin[fv].w <= 0.0) {
-                continue;
-            }
-            float3 vmin = FogVolMin[fv].xyz;
-            float3 vmax = FogVolMax[fv].xyz;
-            if (p.x < vmin.x || p.x > vmax.x || p.y < vmin.y || p.y > vmax.y || p.z < vmin.z || p.z > vmax.z) {
-                continue;
-            }
-            float vd = FogVolMin[fv].w;
-            S = lerp(S, FogVolCol[fv].rgb * (sunCol * ph * sh + 0.2) * vd * 4.0, 0.5);
-            densAt += vd;
-        }
-        insc += trans * S * stepLen;
-        trans *= exp(-densAt * stepLen);
+        insc += vInsc * trans;
+        trans *= vTrans;
     }
     return col * trans + insc;
 }
@@ -641,7 +670,7 @@ float4 main(PSIn pin) : SV_Target
             sk = EnvTX.SampleLevel(LinearSampler, ray, 0).rgb;
         }
         if (FogInfo.x > 0.5) {
-            sk = ApplyFog(sk, ray, 150.0, pin.uv);
+            sk = ApplyFog(sk, ray, 150.0);
         }
         return float4(sk, 1.0);
     }
@@ -935,7 +964,7 @@ float4 main(PSIn pin) : SV_Target
         float3 toFrag = wpos - CamPos.xyz;
         float fragDist = length(toFrag);
         if (fragDist > 1e-3) {
-            float3 fogged = ApplyFog(col + amb, toFrag / fragDist, fragDist, pin.uv);
+            float3 fogged = ApplyFog(col + amb, toFrag / fragDist, fragDist);
             col = fogged;
             amb = float3(0.0, 0.0, 0.0);
         }
