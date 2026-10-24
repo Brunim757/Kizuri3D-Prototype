@@ -558,11 +558,11 @@ bool EditorApp::Initialize() {
         std::getline(vf, ver);
       }
     }
-    if (ver != "dock2") {
+    if (ver != "dock3") {
       std::remove(layoutFilePath.c_str());
       std::ofstream vf(verPath);
       if (vf) {
-        vf << "dock2";
+        vf << "dock3";
       }
       dockLayoutBuilt = false;
     }
@@ -983,8 +983,6 @@ void EditorApp::FocusEntity(EntityId id) {
   log.Add(LogLevel::Info, std::string("Focused ") + e->name);
 }
 void EditorApp::Frame() {
-  ImGuiViewport* viewport = ImGui::GetMainViewport();
-  ImGui::DockSpaceOverViewport(0, viewport);
   ProcessQueuedDialogs();
   if (savePromptQueued) {
     savePromptQueued = false;
