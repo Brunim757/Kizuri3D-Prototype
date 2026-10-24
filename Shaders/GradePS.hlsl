@@ -73,6 +73,7 @@ float4 main(PSIn pin) : SV_Target
     float3 c = HdrTX.Sample(LinearSampler, pin.uv).rgb * expo;
     if (ToneMode == 0) {
         c = float3(ACESFilm(c.r), ACESFilm(c.g), ACESFilm(c.b));
+        c = pow(max(c, 0.0), 1.0 / 2.2);
     } else if (ToneMode == 1) {
         c = c / (1.0 + c);
         c = pow(saturate(c), 1.0 / 2.2);
