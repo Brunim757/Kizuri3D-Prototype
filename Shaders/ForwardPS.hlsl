@@ -64,6 +64,12 @@ cbuffer AmbientCB : register(b7)
 {
     float4 AmbientProbe;
 };
+cbuffer FogVolCB : register(b6)
+{
+    float4 FogVolMin[4];
+    float4 FogVolMax[4];
+    float4 FogVolCol[4];
+};
 Texture2D AlbedoTex : register(t0);
 Texture2D NormalTex : register(t1);
 Texture2D OrmTex : register(t2);
@@ -114,6 +120,73 @@ float GaSchlickGGX(float cosLi, float cosLo, float roughness)
     float r = roughness + 1.0;
     float k = (r * r) / 8.0;
     return GaSchlickG1(cosLi, k) * GaSchlickG1(cosLo, k);
+}
+bool FogRayBox(float3 origin, float3 dir, float3 bmin, float3 bmax, out float t0, out float t1)
+{
+    float3 d = dir;
+    d.x = abs(d.x) < 1e-6 ? 1e-6 : d.x;
+    d.y = abs(d.y) < 1e-6 ? 1e-6 : d.y;
+    d.z = abs(d.z) < 1e-6 ? 1e-6 : d.z;
+    float3 inv = 1.0 / d;
+    float3 ta = (bmin - origin) * inv;
+    float3 tb = (bmax - origin) * inv;
+    float3 tmin = min(ta, tb);
+    float3 tmax = max(ta, tb);
+    t0 = max(max(tmin.x, tmin.y), tmin.z);
+    t1 = min(min(tmax.x, tmax.y), tmax.z);
+    return t1 > max(t0, 0.0);
+}
+float3 ApplyFog(float3 col, float3 rayDir, float tMax)
+{
+    float dens = FogInfo.y;
+    float3 toSun = normalize(SkySun.xyz);
+    float3 sunCol = SkyColor.rgb * max(SkySun.w, 0.0);
+    float cosT = max(dot(rayDir, toSun), 0.0);
+    float ph = 0.15 + 0.85 * pow(cosT, 8.0);
+    float heightScale = 1.0;
+    if (FogInfo.z > 1e-6) {
+        float avgY = CamPos.y + rayDir.y * tMax * 0.5;
+        heightScale = exp(-max(avgY - FogInfo.w, 0.0) * FogInfo.z);
+    }
+    float globalDensity = dens * heightScale;
+    float trans = exp(-globalDensity * tMax);
+    float3 insc = FogColor.rgb * (1.0 - trans);
+    insc += (sunCol * ph + AmbientProbe.rgb) * (1.0 - trans) * 0.12;
+    for (int fv = 0; fv < 4; ++fv) {
+        float vd = FogVolMin[fv].w;
+        if (vd <= 0.0) {
+            continue;
+        }
+        float3 bmin = FogVolMin[fv].xyz;
+        float3 bmax = FogVolMax[fv].xyz;
+        float t0;
+        float t1;
+        if (!FogRayBox(CamPos.xyz, rayDir, bmin, bmax, t0, t1)) {
+            continue;
+        }
+        t0 = max(t0, 0.0);
+        t1 = min(t1, tMax);
+        if (t1 <= t0) {
+            continue;
+        }
+        float3 center = (bmin + bmax) * 0.5;
+        float3 halfSize = max((bmax - bmin) * 0.5, float3(1e-4, 1e-4, 1e-4));
+        float3 volLight = FogVolCol[fv].rgb * (sunCol * ph * 0.65 + AmbientProbe.rgb * 0.35);
+        float stepLen = (t1 - t0) / 8.0;
+        float vTrans = 1.0;
+        float3 vInsc = float3(0.0, 0.0, 0.0);
+        for (int s = 0; s < 8; ++s) {
+            float3 p = CamPos.xyz + rayDir * (t0 + ((float)s + 0.5) * stepLen);
+            float3 q = abs(p - center) / halfSize;
+            float edge = 1.0 - max(q.x, max(q.y, q.z));
+            float localDensity = vd * smoothstep(0.0, 0.35, edge);
+            vInsc += vTrans * volLight * localDensity * stepLen;
+            vTrans *= exp(-localDensity * stepLen);
+        }
+        insc += vInsc * trans;
+        trans *= vTrans;
+    }
+    return col * trans + insc;
 }
 float3 SkyGradient(float3 viewDir, float3 sunDirTo, float3 sunColor, float sunIntensity)
 {
@@ -346,9 +419,7 @@ float4 main(PSIn pin) : SV_Target
         float3 toFrag = pin.wpos - CamPos.xyz;
         float fragDist = length(toFrag);
         if (fragDist > 1e-3) {
-            float dens = FogInfo.y;
-            float trans2 = exp(-dens * fragDist);
-            col = col * trans2 + FogColor.rgb * (1.0 - trans2);
+            col = ApplyFog(col, toFrag / fragDist, fragDist);
         }
     }
     float outA = alpha;

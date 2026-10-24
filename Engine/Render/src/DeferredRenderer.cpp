@@ -5029,6 +5029,9 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
   float fwdBase[8] = { static_cast<float>(w), static_cast<float>(h), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
   rhi->SetPixelConstantBuffer(0, lightCB);
   rhi->SetPixelConstantBuffer(3, forwardCB);
+  if (fogVolCB != 0) {
+    rhi->SetPixelConstantBuffer(6, fogVolCB);
+  }
   rhi->SetPixelTexture(16, transSrc);
   rhi->SetPixelTexture2D(17, envCube);
   rhi->SetPixelSampler(0, sampler);
