@@ -1178,6 +1178,7 @@ void EditorApp::DrawAudioMixer() {
       for (size_t d = 0; d < b->ducking.size(); ++d) {
         AudioDuckLink& link = b->ducking[d];
         const AudioBusDesc* target = link.targetBus >= 0 ? mixer.GetBus(static_cast<uint32_t>(link.targetBus)) : nullptr;
+        ImGui::PushID(static_cast<int>(d));
         ImGui::Text("  -> %s", target != nullptr ? target->name.c_str() : "(none)");
         ImGui::SameLine();
         float db = link.amountDb;
@@ -1185,7 +1186,9 @@ void EditorApp::DrawAudioMixer() {
           link.amountDb = db;
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton("Remove")) {
+        const bool remove = ImGui::SmallButton("Remove");
+        ImGui::PopID();
+        if (remove) {
           b->ducking.erase(b->ducking.begin() + static_cast<long>(d));
           break;
         }
