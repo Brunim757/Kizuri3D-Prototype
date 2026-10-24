@@ -355,7 +355,25 @@ float4 main(PSIn pin) : SV_Target
             continue;
         }
         float kind = LightA[i].w;
-        if (kind > 1.5) {
+        if (kind > 2.5) {
+            float3 Rn = normalize(LightB[i].xyz);
+            float3 rref = abs(Rn.y) > 0.99 ? float3(1.0, 0.0, 0.0) : float3(0.0, 1.0, 0.0);
+            float3 rright = normalize(cross(Rn, rref));
+            float3 rup = cross(Rn, rright);
+            float3 toC = pin.wpos - LightA[i].xyz;
+            float2 ph = float2(dot(toC, rright), dot(toC, rup));
+            float2 hh = float2(max(LightC[i].a, 0.01), max(LightD[i].x, 0.01));
+            float2 cp = clamp(ph, -hh, hh);
+            float3 closest = LightA[i].xyz + rright * cp.x + rup * cp.y;
+            float3 toL = closest - pin.wpos;
+            float rdist = length(toL);
+            float3 Lr = toL / max(rdist, 1e-4);
+            float rrange = max(LightB[i].w, 1e-3);
+            float ratt = ApplyAttenuation(rdist, rrange) * saturate(dot(-Lr, Rn) * 0.5 + 0.5);
+            col += ShadeFwd(n, V, Lr, LightC[i].rgb, alb, rough, metal, F0) * ratt;
+            col += ShadeSssFwd(n, Lr, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * ratt;
+            col += ShadeHairFwd(n, fwdTan, V, Lr, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * ratt;
+        } else if (kind > 1.5) {
             float3 Ld = normalize(-LightA[i].xyz);
             col += ShadeFwd(n, V, Ld, LightC[i].rgb, alb, rough, metal, F0);
             col += ShadeSssFwd(n, Ld, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF);
