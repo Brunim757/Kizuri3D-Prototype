@@ -7,6 +7,7 @@ cbuffer TaaCB : register(b0)
     float4 CamRight;
     float4 CamUp;
     float4 TanWH;
+    row_major float4x4 PrevVPU;
 };
 Texture2D CurrentTX : register(t0);
 Texture2D HistoryTX : register(t1);
@@ -47,7 +48,12 @@ float4 main(PSIn pin) : SV_Target
         reprojP = CamPos.xyz + normalize(sray) * 10000.0;
         cdepth = 10000.0;
     }
-    float4 pp = mul(float4(reprojP, 1.0), PrevVP);
+    float4 pp;
+    if (isSky > 0.5) {
+        pp = mul(float4(reprojP, 1.0), PrevVPU);
+    } else {
+        pp = mul(float4(reprojP, 1.0), PrevVP);
+    }
     float2 puv = float2(-10.0, -10.0);
     float pdepth = 1e9;
     if (pp.w > 1e-5) {

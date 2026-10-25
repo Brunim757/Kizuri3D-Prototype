@@ -855,7 +855,7 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
     return false;
   }
   RecreateMomentsTargets();
-  float taaInit[40] = { 0.0f };
+  float taaInit[56] = { 0.0f };
   taaCB = rhi->CreateConstantBuffer(sizeof(taaInit), &taaInit);
   if (taaCB == 0) {
     return false;
@@ -6104,8 +6104,19 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
           taaVP[cc * 4 + rr] = s;
         }
       }
-      float tc[40];
+      float taaVPU[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+      for (int cc = 0; cc < 4; ++cc) {
+        for (int rr = 0; rr < 4; ++rr) {
+          float s = 0.0f;
+          for (int kk = 0; kk < 4; ++kk) {
+            s += prevViewU[cc * 4 + kk] * prevProjU[kk * 4 + rr];
+          }
+          taaVPU[cc * 4 + rr] = s;
+        }
+      }
+      float tc[56];
       std::memcpy(tc, taaVP, sizeof(taaVP));
+      std::memcpy(tc + 40, taaVPU, sizeof(taaVPU));
       tc[16] = camPos[0];
       tc[17] = camPos[1];
       tc[18] = camPos[2];
@@ -6184,6 +6195,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
         NoteFullscreen();
         rhi->SetPixelTexture(0, 0);
         filmSrc = taaSharpA;
+        taaWrite = taaSharpA;
       }
     }
     if (fxaaOn && fxaaA != 0 && fxaaPS != 0) {
