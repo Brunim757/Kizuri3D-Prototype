@@ -1997,11 +1997,8 @@ bool TestTriplanar() {
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
-bool TestAudioClipDecode() {
-  const char* path = "kizuri_test_audio_tmp.wav";
-  const int frames = 4800;
-  const int rate = 48000;
-  std::FILE* f = std::fopen(path, "wb");
+static bool WriteTestWav(const std::string& path, int frames, int rate, float amplitude) {
+  std::FILE* f = std::fopen(path.c_str(), "wb");
   if (f == nullptr) {
     return false;
   }
@@ -2031,10 +2028,26 @@ bool TestAudioClipDecode() {
   std::memcpy(hdr + 40, &dataSize, 4);
   std::fwrite(hdr, 1, sizeof(hdr), f);
   for (int i = 0; i < frames; ++i) {
-    const int16_t s = static_cast<int16_t>(30000.0f * std::sin(static_cast<float>(i) * 0.05f));
+    float value = amplitude * std::sin(static_cast<float>(i) * 0.05f);
+    if (value > 1.0f) {
+      value = 1.0f;
+    }
+    if (value < -1.0f) {
+      value = -1.0f;
+    }
+    const int16_t s = static_cast<int16_t>(value * 32767.0f);
     std::fwrite(&s, 1, 2, f);
   }
   std::fclose(f);
+  return true;
+}
+bool TestAudioClipDecode() {
+  const char* path = "kizuri_test_audio_tmp.wav";
+  const int frames = 4800;
+  const int rate = 48000;
+  if (!WriteTestWav(path, frames, rate, 0.9f)) {
+    return false;
+  }
   Kizuri::AudioClip clip;
   const bool ok = Kizuri::LoadAudioClipFromFile(path, 48000, clip);
   std::remove(path);
@@ -2412,6 +2425,138 @@ bool TestAudioPartialUpdate() {
     return false;
   }
   return std::fabs(peakA - peakC) <= peakA * 0.2f;
+}
+bool TestAudioSourceProperties() {
+  Kizuri::AudioEngine engine;
+  if (!engine.Initialize(48000, 2, false)) {
+    return false;
+  }
+  const Kizuri::AudioClip clip = MakeTestTone();
+  const uint32_t clipId = engine.AddClip(clip);
+  const uint32_t src = engine.AddSource(clipId, 0);
+  if (clipId == 0xFFFFFFFFu || src == 0) {
+    engine.Shutdown();
+    return false;
+  }
+  const float listener[3] = { 0.0f, 0.0f, 0.0f };
+  const float forward[3] = { 0.0f, 0.0f, 1.0f };
+  const float up[3] = { 0.0f, 1.0f, 0.0f };
+  engine.SetListener(listener, forward, up);
+  engine.SetSourceSpatial(src, true);
+  engine.SetSourcePlaying(src, true);
+  const float pos[3] = { 10.0f, 0.0f, 0.0f };
+  engine.SetSourcePosition(src, pos);
+  engine.SetSourceDistance(src, 1.0f, 100.0f);
+  engine.SetSourceRolloff(src, Kizuri::AudioRolloffModel::Linear, 1.0f);
+  engine.Update();
+  const float linearPeak = RenderPeak(engine, 480);
+  engine.SetSourceRolloff(src, Kizuri::AudioRolloffModel::Exponential, 2.0f);
+  engine.Update();
+  const float exponentialPeak = RenderPeak(engine, 480);
+  engine.SetSourceDistance(src, 1.0f, 5.0f);
+  engine.Update();
+  const float silentPeak = RenderPeak(engine, 480);
+  engine.Shutdown();
+  return linearPeak > 0.2f && exponentialPeak > 0.0f && exponentialPeak < linearPeak * 0.1f && silentPeak == 0.0f;
+}
+bool TestGameWorldAudio() {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  const fs::path dir = fs::temp_directory_path(ec) / "kizuri_gw_audio_test";
+  if (ec) {
+    return false;
+  }
+  fs::remove_all(dir, ec);
+  fs::create_directories(dir, ec);
+  if (ec) {
+    return false;
+  }
+  const std::string wavPath = (dir / "tone.wav").string();
+  if (!WriteTestWav(wavPath, 4800, 48000, 0.5f)) {
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = false;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", dir.string(), options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  if (!world.GetAudio().Initialize(48000, 2, false)) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId id = scene.CreateEntity("Speaker");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (entity == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  entity->hasAudioSource = true;
+  Kizuri::MakeDefaultAudioSource(entity->audioSource);
+  entity->audioSource.clipPath = "tone.wav";
+  entity->audioSource.volume = 0.5f;
+  entity->audioSource.minDistance = 1.0f;
+  entity->audioSource.maxDistance = 100.0f;
+  entity->audioSource.rolloff = 1.0f;
+  entity->audioSource.rolloffModel = 0;
+  entity->audioSource.spatial = true;
+  entity->audioSource.playing = true;
+  entity->audioSource.loop = true;
+  entity->transform.position[0] = 5.0f;
+  world.SetCameraPosition(0.0f, 0.0f, 0.0f);
+  world.SetCameraYawPitch(0.0f, 0.0f);
+  world.SyncAudio(1.0f / 60.0f);
+  std::vector<float> out(480 * 2, 0.0f);
+  world.GetAudio().Render(out.data(), 480);
+  float leftPeak = 0.0f;
+  float rightPeak = 0.0f;
+  for (uint32_t i = 0; i < 480; ++i) {
+    const float l = out[i * 2 + 0] < 0.0f ? -out[i * 2 + 0] : out[i * 2 + 0];
+    const float r = out[i * 2 + 1] < 0.0f ? -out[i * 2 + 1] : out[i * 2 + 1];
+    if (l > leftPeak) {
+      leftPeak = l;
+    }
+    if (r > rightPeak) {
+      rightPeak = r;
+    }
+  }
+  const uint32_t voices = world.GetAudio().ActiveVoiceCount();
+  world.SyncAudio(1.0f / 60.0f);
+  world.GetAudio().Render(out.data(), 480);
+  const uint32_t voicesAfterSync = world.GetAudio().ActiveVoiceCount();
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  fs::remove_all(dir, ec);
+  return rightPeak > leftPeak * 2.0f && rightPeak > 0.2f && rightPeak < 0.4f && voices == 1 && voicesAfterSync == 1;
 }
 bool TestSceneAllComponentsRoundTrip() {
   Kizuri::Scene scene;
@@ -11313,6 +11458,8 @@ int main() {
   failures += Check("AudioSpatialPan", TestAudioSpatialPan());
   failures += Check("AudioDucking", TestAudioDucking());
   failures += Check("AudioPartialUpdate", TestAudioPartialUpdate());
+  failures += Check("AudioSourceProperties", TestAudioSourceProperties());
+  failures += Check("GameWorldAudio", TestGameWorldAudio());
   failures += Check("AudioSourceSerialize", TestAudioSourceSerialize());
   failures += Check("ComponentRegistry", TestComponentRegistry());
   failures += Check("SceneAllComponents", TestSceneAllComponentsRoundTrip());

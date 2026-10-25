@@ -116,6 +116,7 @@ public:
   bool SetSourceBus(uint32_t sourceId, uint32_t busId);
   bool SetSourceSpatial(uint32_t sourceId, bool spatial);
   bool SetSourceLoop(uint32_t sourceId, bool loop);
+  bool SetSourceDistance(uint32_t sourceId, float minDistance, float maxDistance);
   bool SetSourceRolloff(uint32_t sourceId, AudioRolloffModel model, float rolloff);
   void SetListener(const float pos[3], const float forward[3], const float up[3]);
   const float* ListenerPosition() const { return listenerPos; }
@@ -134,7 +135,8 @@ private:
       kFieldSpatial = 1u << 3,
       kFieldLoop = 1u << 4,
       kFieldRolloff = 1u << 5,
-      kFieldPosition = 1u << 6
+      kFieldPosition = 1u << 6,
+      kFieldDistance = 1u << 7
     };
     Kind kind = Kind::Add;
     uint32_t fields = 0;
@@ -147,6 +149,8 @@ private:
     bool loop = false;
     AudioRolloffModel rolloff = AudioRolloffModel::Inverse;
     float rolloffFactor = 1.0f;
+    float minDistance = 1.0f;
+    float maxDistance = 20.0f;
     float position[3] = { 0.0f, 0.0f, 0.0f };
   };
   struct Voice {

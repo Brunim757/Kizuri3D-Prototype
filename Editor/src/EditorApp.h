@@ -65,6 +65,10 @@ struct EditorApp {
     uint32_t clipId = 0xFFFFFFFFu;
     std::string clipPath;
     float volume = 1.0f;
+    float minDistance = 1.0f;
+    float maxDistance = 20.0f;
+    float rolloff = 1.0f;
+    int rolloffModel = 1;
     bool playing = true;
     bool spatial = true;
     bool loop = false;

@@ -3,6 +3,7 @@
 #include "Kizuri/SceneSerializer.h"
 #include <DirectXMath.h>
 #include <cmath>
+#include <filesystem>
 #include <unordered_map>
 #include <vector>
 namespace Kizuri {
@@ -132,6 +133,7 @@ bool GameWorld::Initialize(IRHI* rhi, int width, int height, const std::string& 
   }
   viewWidth = width > 0 ? width : 1280;
   viewHeight = height > 0 ? height : 720;
+  assetsRoot = assetsDir;
   if (!renderer.Initialize(rhi, viewWidth, viewHeight, shaderDir.c_str())) {
     lastError = "Falha ao inicializar o renderer em " + shaderDir;
     return false;
@@ -168,6 +170,9 @@ void GameWorld::Shutdown() {
     return;
   }
   initialized = false;
+  audioSources.clear();
+  audioClipCache.clear();
+  assetsRoot.clear();
   audio.Shutdown();
   physics.Shutdown();
   physBodies.clear();
@@ -188,6 +193,7 @@ bool GameWorld::LoadSceneFile(const std::string& path) {
     physics.DestroyBody(it->second);
   }
   physBodies.clear();
+  ClearAudioSources();
   SceneEcsBridge::Import(scene, ecs);
   return true;
 }
@@ -312,10 +318,141 @@ void GameWorld::SyncPhysics(float dt) {
   }
   SceneEcsBridge::ExportTransforms(ecs, scene);
 }
+void GameWorld::ClearAudioSources() {
+  if (audio.IsInitialized()) {
+    for (std::unordered_map<EntityId, AudioEntry, EntityIdHash>::const_iterator it = audioSources.begin(); it != audioSources.end(); ++it) {
+      audio.RemoveSource(it->second.sourceId);
+    }
+  }
+  audioSources.clear();
+}
 void GameWorld::SyncAudio(float dt) {
   (void)dt;
   if (!initialized || !audio.IsInitialized()) {
     return;
+  }
+  float camX = 0.0f;
+  float camY = 0.0f;
+  float camZ = 0.0f;
+  camera.GetPosition(camX, camY, camZ);
+  float yaw = 0.0f;
+  float pitch = 0.0f;
+  camera.GetYawPitch(yaw, pitch);
+  const float listenerPos[3] = { camX, camY, camZ };
+  const float listenerFwd[3] = { std::sin(yaw) * std::cos(pitch), -std::sin(pitch), std::cos(yaw) * std::cos(pitch) };
+  const float listenerUp[3] = { 0.0f, 1.0f, 0.0f };
+  audio.SetListener(listenerPos, listenerFwd, listenerUp);
+  const std::vector<EntityId> all = scene.All();
+  for (size_t i = 0; i < all.size(); ++i) {
+    Entity* e = scene.Get(all[i]);
+    if (e == nullptr || !e->hasAudioSource) {
+      continue;
+    }
+    const AudioSourceData& a = e->audioSource;
+    std::unordered_map<EntityId, AudioEntry, EntityIdHash>::iterator it = audioSources.find(e->id);
+    if (it == audioSources.end()) {
+      if (a.clipPath.empty()) {
+        continue;
+      }
+      uint32_t clipId = 0xFFFFFFFFu;
+      std::unordered_map<std::string, uint32_t>::const_iterator cached = audioClipCache.find(a.clipPath);
+      if (cached != audioClipCache.end()) {
+        clipId = cached->second;
+      } else {
+        std::string full = a.clipPath;
+        if (!assetsRoot.empty() && !std::filesystem::path(a.clipPath).is_absolute()) {
+          full = (std::filesystem::path(assetsRoot) / a.clipPath).string();
+        }
+        uint32_t loaded = 0xFFFFFFFFu;
+        if (audio.LoadClip(full, loaded)) {
+          audioClipCache[a.clipPath] = loaded;
+          clipId = loaded;
+        }
+      }
+      if (clipId == 0xFFFFFFFFu) {
+        continue;
+      }
+      const uint32_t bus = static_cast<uint32_t>(a.bus < 0 ? 0 : a.bus);
+      const uint32_t sourceId = audio.AddSource(clipId, bus);
+      if (sourceId == 0) {
+        continue;
+      }
+      AudioEntry entry;
+      entry.sourceId = sourceId;
+      entry.clipId = clipId;
+      entry.clipPath = a.clipPath;
+      entry.volume = a.volume;
+      entry.minDistance = a.minDistance;
+      entry.maxDistance = a.maxDistance;
+      entry.rolloff = a.rolloff;
+      entry.rolloffModel = a.rolloffModel;
+      entry.playing = a.playing;
+      entry.spatial = a.spatial;
+      entry.loop = a.loop;
+      entry.bus = a.bus;
+      audio.SetSourceGain(sourceId, a.volume);
+      audio.SetSourcePlaying(sourceId, a.playing);
+      audio.SetSourceSpatial(sourceId, a.spatial);
+      audio.SetSourceLoop(sourceId, a.loop);
+      audio.SetSourceBus(sourceId, bus);
+      audio.SetSourceDistance(sourceId, a.minDistance, a.maxDistance);
+      const int model = a.rolloffModel < 0 ? 0 : (a.rolloffModel > 2 ? 2 : a.rolloffModel);
+      audio.SetSourceRolloff(sourceId, static_cast<AudioRolloffModel>(model), a.rolloff);
+      if (a.spatial) {
+        audio.SetSourcePosition(sourceId, e->transform.position);
+      }
+      audioSources[e->id] = entry;
+      it = audioSources.find(e->id);
+    }
+    AudioEntry& entry = it->second;
+    if (entry.clipPath != a.clipPath) {
+      audio.RemoveSource(entry.sourceId);
+      audioSources.erase(it);
+      continue;
+    }
+    if (entry.volume != a.volume) {
+      audio.SetSourceGain(entry.sourceId, a.volume);
+      entry.volume = a.volume;
+    }
+    if (entry.playing != a.playing) {
+      audio.SetSourcePlaying(entry.sourceId, a.playing);
+      entry.playing = a.playing;
+    }
+    if (entry.spatial != a.spatial) {
+      audio.SetSourceSpatial(entry.sourceId, a.spatial);
+      entry.spatial = a.spatial;
+    }
+    if (entry.loop != a.loop) {
+      audio.SetSourceLoop(entry.sourceId, a.loop);
+      entry.loop = a.loop;
+    }
+    if (entry.bus != a.bus) {
+      audio.SetSourceBus(entry.sourceId, static_cast<uint32_t>(a.bus < 0 ? 0 : a.bus));
+      entry.bus = a.bus;
+    }
+    if (entry.minDistance != a.minDistance || entry.maxDistance != a.maxDistance) {
+      audio.SetSourceDistance(entry.sourceId, a.minDistance, a.maxDistance);
+      entry.minDistance = a.minDistance;
+      entry.maxDistance = a.maxDistance;
+    }
+    if (entry.rolloff != a.rolloff || entry.rolloffModel != a.rolloffModel) {
+      const int model = a.rolloffModel < 0 ? 0 : (a.rolloffModel > 2 ? 2 : a.rolloffModel);
+      audio.SetSourceRolloff(entry.sourceId, static_cast<AudioRolloffModel>(model), a.rolloff);
+      entry.rolloff = a.rolloff;
+      entry.rolloffModel = a.rolloffModel;
+    }
+    if (a.spatial) {
+      audio.SetSourcePosition(entry.sourceId, e->transform.position);
+    }
+  }
+  for (std::unordered_map<EntityId, AudioEntry, EntityIdHash>::iterator it = audioSources.begin(); it != audioSources.end();) {
+    Entity* e = scene.Get(it->first);
+    if (e == nullptr || !e->hasAudioSource) {
+      audio.RemoveSource(it->second.sourceId);
+      it = audioSources.erase(it);
+    } else {
+      ++it;
+    }
   }
   audio.Update();
 }

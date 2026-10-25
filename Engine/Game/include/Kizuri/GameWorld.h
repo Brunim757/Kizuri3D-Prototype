@@ -60,6 +60,24 @@ private:
   FreeCamera camera;
   std::string lastError;
   std::unordered_map<EntityId, uint32_t, EntityIdHash> physBodies;
+  struct AudioEntry {
+    uint32_t sourceId = 0;
+    uint32_t clipId = 0xFFFFFFFFu;
+    std::string clipPath;
+    float volume = 1.0f;
+    float minDistance = 1.0f;
+    float maxDistance = 20.0f;
+    float rolloff = 1.0f;
+    int rolloffModel = 1;
+    bool playing = true;
+    bool spatial = true;
+    bool loop = false;
+    int bus = 0;
+  };
+  std::unordered_map<EntityId, AudioEntry, EntityIdHash> audioSources;
+  std::unordered_map<std::string, uint32_t> audioClipCache;
+  std::string assetsRoot;
+  void ClearAudioSources();
   bool initialized = false;
   int viewWidth = 1280;
   int viewHeight = 720;

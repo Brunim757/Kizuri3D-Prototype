@@ -276,6 +276,19 @@ bool AudioEngine::SetSourceLoop(uint32_t sourceId, bool loop) {
   }
   return true;
 }
+bool AudioEngine::SetSourceDistance(uint32_t sourceId, float minDistance, float maxDistance) {
+  VoiceCmd cmd;
+  cmd.kind = VoiceCmd::Kind::Update;
+  cmd.sourceId = sourceId;
+  cmd.fields = VoiceCmd::kFieldDistance;
+  cmd.minDistance = minDistance;
+  cmd.maxDistance = maxDistance;
+  {
+    std::lock_guard<std::mutex> lock(commandMutex);
+    commands.push_back(cmd);
+  }
+  return true;
+}
 bool AudioEngine::SetSourceRolloff(uint32_t sourceId, AudioRolloffModel model, float rolloff) {
   VoiceCmd cmd;
   cmd.kind = VoiceCmd::Kind::Update;
@@ -433,6 +446,8 @@ void AudioEngine::ApplyCommands() {
       v.loop = cmd.loop;
       v.rolloff = cmd.rolloff;
       v.rolloffFactor = cmd.rolloffFactor;
+      v.minDistance = cmd.minDistance;
+      v.maxDistance = cmd.maxDistance;
       v.position[0] = cmd.position[0];
       v.position[1] = cmd.position[1];
       v.position[2] = cmd.position[2];
@@ -468,6 +483,10 @@ void AudioEngine::ApplyCommands() {
         if ((cmd.fields & VoiceCmd::kFieldRolloff) != 0) {
           voice.rolloff = cmd.rolloff;
           voice.rolloffFactor = cmd.rolloffFactor;
+        }
+        if ((cmd.fields & VoiceCmd::kFieldDistance) != 0) {
+          voice.minDistance = cmd.minDistance;
+          voice.maxDistance = cmd.maxDistance;
         }
         if ((cmd.fields & VoiceCmd::kFieldPosition) != 0) {
           voice.position[0] = cmd.position[0];

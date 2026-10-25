@@ -675,7 +675,8 @@ void EditorApp::SyncAudio(float dt) {
       if (clipId == 0xFFFFFFFFu) {
         continue;
       }
-      const uint32_t sourceId = audio.AddSource(clipId, static_cast<uint32_t>(a.bus < 0 ? 0 : a.bus));
+      const uint32_t bus = static_cast<uint32_t>(a.bus < 0 ? 0 : a.bus);
+      const uint32_t sourceId = audio.AddSource(clipId, bus);
       if (sourceId == 0) {
         continue;
       }
@@ -684,14 +685,34 @@ void EditorApp::SyncAudio(float dt) {
       entry.clipId = clipId;
       entry.clipPath = a.clipPath;
       entry.volume = a.volume;
+      entry.minDistance = a.minDistance;
+      entry.maxDistance = a.maxDistance;
+      entry.rolloff = a.rolloff;
+      entry.rolloffModel = a.rolloffModel;
       entry.playing = a.playing;
       entry.spatial = a.spatial;
       entry.loop = a.loop;
       entry.bus = a.bus;
+      audio.SetSourceGain(sourceId, a.volume);
+      audio.SetSourcePlaying(sourceId, a.playing);
+      audio.SetSourceSpatial(sourceId, a.spatial);
+      audio.SetSourceLoop(sourceId, a.loop);
+      audio.SetSourceBus(sourceId, bus);
+      audio.SetSourceDistance(sourceId, a.minDistance, a.maxDistance);
+      const int model = a.rolloffModel < 0 ? 0 : (a.rolloffModel > 2 ? 2 : a.rolloffModel);
+      audio.SetSourceRolloff(sourceId, static_cast<AudioRolloffModel>(model), a.rolloff);
+      if (a.spatial) {
+        audio.SetSourcePosition(sourceId, e->transform.position);
+      }
       audioSources[e->id] = entry;
       it = audioSources.find(e->id);
     }
     AudioEntry& entry = it->second;
+    if (entry.clipPath != a.clipPath) {
+      audio.RemoveSource(entry.sourceId);
+      audioSources.erase(it);
+      continue;
+    }
     if (entry.volume != a.volume) {
       audio.SetSourceGain(entry.sourceId, a.volume);
       entry.volume = a.volume;
@@ -711,6 +732,17 @@ void EditorApp::SyncAudio(float dt) {
     if (entry.bus != a.bus) {
       audio.SetSourceBus(entry.sourceId, static_cast<uint32_t>(a.bus < 0 ? 0 : a.bus));
       entry.bus = a.bus;
+    }
+    if (entry.minDistance != a.minDistance || entry.maxDistance != a.maxDistance) {
+      audio.SetSourceDistance(entry.sourceId, a.minDistance, a.maxDistance);
+      entry.minDistance = a.minDistance;
+      entry.maxDistance = a.maxDistance;
+    }
+    if (entry.rolloff != a.rolloff || entry.rolloffModel != a.rolloffModel) {
+      const int model = a.rolloffModel < 0 ? 0 : (a.rolloffModel > 2 ? 2 : a.rolloffModel);
+      audio.SetSourceRolloff(entry.sourceId, static_cast<AudioRolloffModel>(model), a.rolloff);
+      entry.rolloff = a.rolloff;
+      entry.rolloffModel = a.rolloffModel;
     }
     if (a.spatial) {
       audio.SetSourcePosition(entry.sourceId, e->transform.position);
