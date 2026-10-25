@@ -10175,7 +10175,7 @@ bool TestShaderCompile() {
     const char* file;
     const char* profile;
   };
-  Entry entries[20] = {
+  Entry entries[21] = {
     { "GeometryVS.hlsl", "vs_5_0" },
     { "GeometryPS.hlsl", "ps_5_0" },
     { "LightingVS.hlsl", "vs_5_0" },
@@ -10195,10 +10195,11 @@ bool TestShaderCompile() {
     { "FilmPS.hlsl", "ps_5_0" },
     { "SsgiPS.hlsl", "ps_5_0" },
     { "FxaaPS.hlsl", "ps_5_0" },
-    { "SsgiBlurPS.hlsl", "ps_5_0" }
+    { "SsgiBlurPS.hlsl", "ps_5_0" },
+    { "ForwardPS.hlsl", "ps_5_0" }
   };
   const char* dirs[4] = { "Shaders", "../Shaders", "../../Shaders", "build/bin/Release/Shaders" };
-  for (int e = 0; e < 20; ++e) {
+  for (int e = 0; e < 21; ++e) {
     bool found = false;
     for (int d = 0; d < 4; ++d) {
       std::string path = std::string(dirs[d]) + "/" + entries[e].file;

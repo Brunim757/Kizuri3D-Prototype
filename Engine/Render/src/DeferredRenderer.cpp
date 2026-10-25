@@ -5035,6 +5035,21 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
   rhi->SetPixelTexture(16, transSrc);
   rhi->SetPixelTexture2D(17, envCube);
   rhi->SetPixelSampler(0, sampler);
+  if (shadowMapsValid) {
+    rhi->SetPixelTexture(8, shadowAtlas);
+    rhi->SetPixelTexture(9, shadowCube);
+    rhi->SetPixelSampler(1, shadowSampler);
+  } else {
+    rhi->SetPixelTexture(8, 0);
+    rhi->SetPixelTexture(9, 0);
+    rhi->SetPixelSampler(1, 0);
+  }
+  if (MomentsReady()) {
+    rhi->SetPixelTexture(10, shadowMoments);
+  } else {
+    rhi->SetPixelTexture(10, 0);
+  }
+  rhi->SetPixelSampler(2, sampler);
   if (ambientCB != 0) {
     float ambF[4] = { ambientProbe[0], ambientProbe[1], ambientProbe[2], sssRadius };
     rhi->UpdateConstantBuffer(ambientCB, &ambF, sizeof(ambF));
@@ -5114,6 +5129,11 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
   rhi->SetPixelTexture2D(19, 0);
   rhi->SetPixelTexture(16, 0);
   rhi->SetPixelTexture2D(17, 0);
+  rhi->SetPixelTexture(8, 0);
+  rhi->SetPixelTexture(9, 0);
+  rhi->SetPixelTexture(10, 0);
+  rhi->SetPixelSampler(1, 0);
+  rhi->SetPixelSampler(2, 0);
   blend.enable = false;
   rhi->SetBlendState(blend);
   ds.depthWrite = true;
