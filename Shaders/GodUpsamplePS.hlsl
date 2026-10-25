@@ -1,11 +1,13 @@
 Texture2D GodTX : register(t0);
 Texture2D GodDepthTX : register(t1);
 Texture2D PositionTX : register(t2);
+Texture2D SceneTX : register(t3);
 SamplerState LinearSampler : register(s0);
 cbuffer GodUpCB : register(b0)
 {
     float4 GodUpTexel;
     float4 GodUpCam;
+    float4 GodUpFwd;
 };
 struct PSIn
 {
@@ -15,7 +17,7 @@ struct PSIn
 float4 main(PSIn pin) : SV_Target
 {
     float3 Pc = PositionTX.Sample(LinearSampler, pin.uv).xyz;
-    float dc = dot(Pc, Pc) < 1e-8 ? 1e9 : length(Pc - GodUpCam.xyz);
+    float dc = dot(Pc, Pc) < 1e-8 ? 1e9 : max(dot(Pc - GodUpCam.xyz, GodUpFwd.xyz), 0.0);
     float2 texel = GodUpTexel.xy;
     float3 acc = float3(0.0, 0.0, 0.0);
     float wsum = 0.0;
@@ -28,8 +30,9 @@ float4 main(PSIn pin) : SV_Target
             wsum += wgt;
         }
     }
+    float3 scene = SceneTX.SampleLevel(LinearSampler, pin.uv, 0).rgb;
     if (wsum < 1e-6) {
-        return float4(GodTX.Sample(LinearSampler, pin.uv).rgb, 1.0);
+        return float4(scene + GodTX.SampleLevel(LinearSampler, pin.uv, 0).rgb, 1.0);
     }
-    return float4(acc / wsum, 1.0);
+    return float4(scene + acc / wsum, 1.0);
 }

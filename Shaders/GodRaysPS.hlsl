@@ -15,7 +15,6 @@ struct PSIn
 };
 float4 main(PSIn pin, out float4 depthOut : SV_Target1) : SV_Target0
 {
-    float3 base = SceneTX.Sample(LinearSampler, pin.uv).rgb;
     float3 wposC = PositionTX.Sample(LinearSampler, pin.uv).xyz;
     float cdepth = dot(wposC - GodCamPos.xyz, GodCamFwd.xyz);
     depthOut = float4(cdepth, cdepth, cdepth, 1.0);
@@ -28,7 +27,7 @@ float4 main(PSIn pin, out float4 depthOut : SV_Target1) : SV_Target0
     sunCol += SceneTX.SampleLevel(LinearSampler, sunClamped + stx, 0).rgb * 0.25;
     float sunLum = dot(sunCol, float3(0.2126, 0.7152, 0.0722));
     if (sunOff > 0.5 || sunLum < 0.02) {
-        return float4(base, 1.0);
+        return float4(0.0, 0.0, 0.0, 1.0);
     }
     float2 sunUV = GodParams.xy;
     float density = GodParams.z;
@@ -37,7 +36,7 @@ float4 main(PSIn pin, out float4 depthOut : SV_Target1) : SV_Target0
     float exposure = GodParams2.y;
     float2 delta = (pin.uv - sunUV) * density / 32.0;
     if (dot(delta, delta) < 1e-10) {
-        return float4(base, 1.0);
+        return float4(0.0, 0.0, 0.0, 1.0);
     }
     float dth = max(abs(cdepth) * 0.03, 0.5);
     float2 uv = pin.uv;
@@ -59,6 +58,6 @@ float4 main(PSIn pin, out float4 depthOut : SV_Target1) : SV_Target0
     float sunDist = length(pin.uv - sunUV);
     float fall = saturate(1.0 - sunDist * 1.1);
     float sunScale = clamp(sunLum * 2.0, 0.0, 2.0);
-    float3 outc = base + acc / 32.0 * exposure * 0.25 * fall * sunScale;
+    float3 outc = acc / 32.0 * exposure * 0.25 * fall * sunScale;
     return float4(outc, 1.0);
 }

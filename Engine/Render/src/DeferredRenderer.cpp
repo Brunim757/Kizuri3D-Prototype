@@ -880,7 +880,7 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   if (godUpPS == 0) {
     return false;
   }
-  float godUpInit[8] = { 0.0f };
+  float godUpInit[12] = { 0.0f };
   godUpCB = rhi->CreateConstantBuffer(sizeof(godUpInit), &godUpInit);
   if (godUpCB == 0) {
     return false;
@@ -6061,11 +6061,12 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       rhi->SetPixelTexture(0, 0);
       rhi->SetPixelTexture(1, 0);
       if (godUpPS != 0 && godUpCB != 0) {
-        float gu[8] = {
+        float gu[12] = {
           godHW > 0 ? 1.0f / static_cast<float>(godHW) : 0.0f,
           godHH > 0 ? 1.0f / static_cast<float>(godHH) : 0.0f,
           0.0f, 0.0f,
-          camPos[0], camPos[1], camPos[2], 1.0f
+          camPos[0], camPos[1], camPos[2], 1.0f,
+          mainCam.camFwd[0], mainCam.camFwd[1], mainCam.camFwd[2], 0.0f
         };
         rhi->UpdateConstantBuffer(godUpCB, &gu, sizeof(gu));
         rhi->SetPixelConstantBuffer(0, godUpCB);
@@ -6082,10 +6083,12 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
         rhi->SetPixelTexture(0, godHalfA);
         rhi->SetPixelTexture(1, godDepthA);
         rhi->SetPixelTexture(2, gPosition);
+        rhi->SetPixelTexture(3, filmSrc);
         NoteFullscreen();
         rhi->SetPixelTexture(0, 0);
         rhi->SetPixelTexture(1, 0);
         rhi->SetPixelTexture(2, 0);
+        rhi->SetPixelTexture(3, 0);
       }
       godRan = true;
       filmSrc = godA;
