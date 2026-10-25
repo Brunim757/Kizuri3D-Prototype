@@ -87,4 +87,15 @@ XMMATRIX FreeCamera::View() const {
 XMMATRIX FreeCamera::Projection(float aspect) const {
   return XMMatrixPerspectiveFovLH(fovY, aspect, nearZ, farZ);
 }
+void CameraBasisFromView(const float view[16], float fwd[3], float right[3], float up[3]) {
+  right[0] = view[0];
+  right[1] = view[1];
+  right[2] = view[2];
+  up[0] = view[4];
+  up[1] = view[5];
+  up[2] = view[6];
+  fwd[0] = view[8];
+  fwd[1] = view[9];
+  fwd[2] = view[10];
+}
 }

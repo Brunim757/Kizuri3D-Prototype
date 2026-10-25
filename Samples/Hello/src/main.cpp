@@ -3733,6 +3733,21 @@ bool TestCamera() {
   if (pf.m[0][0] <= 0.0f || pf.m[1][1] <= 0.0f) {
     return false;
   }
+  cam.SetYawPitch(1.5707963f, 0.0f);
+  DirectX::XMStoreFloat4x4(&vf, cam.View());
+  float fwd[3];
+  float right[3];
+  float up[3];
+  Kizuri::CameraBasisFromView(&vf.m[0][0], fwd, right, up);
+  if (std::fabs(fwd[0] - 1.0f) > 0.01f || std::fabs(fwd[1]) > 0.01f || std::fabs(fwd[2]) > 0.01f) {
+    return false;
+  }
+  if (std::fabs(right[0]) > 0.01f || std::fabs(right[1]) > 0.01f || std::fabs(right[2] + 1.0f) > 0.01f) {
+    return false;
+  }
+  if (std::fabs(up[0]) > 0.01f || std::fabs(up[1] - 1.0f) > 0.01f || std::fabs(up[2]) > 0.01f) {
+    return false;
+  }
   return true;
 }
 bool TestMeshLoader() {

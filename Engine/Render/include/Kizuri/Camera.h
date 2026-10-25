@@ -24,4 +24,5 @@ private:
   float yaw;
   float pitch;
 };
+void CameraBasisFromView(const float view[16], float fwd[3], float right[3], float up[3]);
 }
