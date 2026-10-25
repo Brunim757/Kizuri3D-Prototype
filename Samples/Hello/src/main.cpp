@@ -3068,6 +3068,95 @@ bool TestPhysicsFall() {
   jobs.Shutdown();
   return ok;
 }
+bool TestGameWorldPhysicsPose() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = true;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", "", options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId id = scene.CreateEntity("Rotating");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (entity == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  entity->hasRigidbody = true;
+  Kizuri::MakeDefaultRigidbody(entity->rigidbody);
+  entity->transform.position[1] = 100.0f;
+  entity->transform.rotation[1] = 45.0f;
+  world.SyncPhysics(1.0f / 60.0f);
+  Kizuri::Transform* ecsTransform = static_cast<Kizuri::Transform*>(world.GetEcs().GetComponent(id, Kizuri::kEcsTransform));
+  if (ecsTransform == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  entity->transform.rotation[1] = 0.0f;
+  ecsTransform->rotation[1] = 0.0f;
+  world.SyncPhysics(1.0f / 60.0f);
+  const Kizuri::Entity* result = scene.Get(id);
+  const bool ok = result != nullptr && std::fabs(result->transform.rotation[1] - 45.0f) < 0.5f;
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
+bool TestPhysicsRotation() {
+  Kizuri::JobSystem jobs;
+  if (!jobs.Initialize()) {
+    return false;
+  }
+  Kizuri::PhysicsWorld world;
+  if (!world.Initialize(&jobs)) {
+    jobs.Shutdown();
+    return false;
+  }
+  Kizuri::PhysBodyDesc desc;
+  desc.motion = Kizuri::PhysMotionType::Dynamic;
+  desc.mass = 1.0f;
+  desc.collider = Kizuri::PhysColliderType::Box;
+  desc.extents[0] = 0.5f;
+  desc.extents[1] = 0.5f;
+  desc.extents[2] = 0.5f;
+  const float euler[3] = { 0.0f, 45.0f, 0.0f };
+  float quat[4];
+  Kizuri::EulerDegToQuat(euler, quat);
+  float pos[3] = { 0.0f, 10.0f, 0.0f };
+  const uint32_t body = world.CreateBody(desc, pos, quat);
+  bool ok = body != 0xFFFFFFFFu;
+  float posePos[3] = { 0.0f, 0.0f, 0.0f };
+  float poseQuat[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+  float restored[3] = { 0.0f, 0.0f, 0.0f };
+  ok = ok && world.GetPose(body, posePos, poseQuat);
+  Kizuri::QuatToEulerDeg(poseQuat, restored);
+  ok = ok && std::fabs(restored[0]) < 0.1f && std::fabs(restored[1] - 45.0f) < 0.1f && std::fabs(restored[2]) < 0.1f;
+  world.DestroyBody(body);
+  world.Shutdown();
+  jobs.Shutdown();
+  return ok;
+}
 bool TestPhysicsFloor() {
   Kizuri::JobSystem jobs;
   if (!jobs.Initialize()) {
@@ -4651,6 +4740,64 @@ bool TestEcsSceneBridge() {
   }
   Kizuri::SceneEcsBridge::ExportTransforms(world, scene);
   if (scene.Get(root)->transform.rotation[1] != 45.0f) {
+    return false;
+  }
+  return true;
+}
+bool TestEulerQuatConversion() {
+  const float angles[6][3] = {
+    { 0.0f, 0.0f, 0.0f },
+    { 30.0f, 45.0f, 60.0f },
+    { 90.0f, 0.0f, 0.0f },
+    { 0.0f, 90.0f, 0.0f },
+    { 0.0f, 0.0f, 90.0f },
+    { -25.0f, 35.0f, -15.0f }
+  };
+  for (int i = 0; i < 6; ++i) {
+    Kizuri::Transform source;
+    Kizuri::MakeIdentityTransform(source);
+    source.rotation[0] = angles[i][0];
+    source.rotation[1] = angles[i][1];
+    source.rotation[2] = angles[i][2];
+    float matrix[16];
+    Kizuri::ComposeMatrix(source, matrix);
+    float quat[4];
+    Kizuri::EulerDegToQuat(angles[i], quat);
+    const float rotatedZ[3] = {
+      2.0f * (quat[3] * quat[1] + quat[0] * quat[2]),
+      2.0f * (quat[2] * quat[1] - quat[3] * quat[0]),
+      1.0f - 2.0f * (quat[0] * quat[0] + quat[1] * quat[1])
+    };
+    if (std::fabs(rotatedZ[0] - matrix[8]) > 1e-4f || std::fabs(rotatedZ[1] - matrix[9]) > 1e-4f || std::fabs(rotatedZ[2] - matrix[10]) > 1e-4f) {
+      return false;
+    }
+    float euler[3];
+    Kizuri::QuatToEulerDeg(quat, euler);
+    Kizuri::Transform restored;
+    Kizuri::MakeIdentityTransform(restored);
+    restored.rotation[0] = euler[0];
+    restored.rotation[1] = euler[1];
+    restored.rotation[2] = euler[2];
+    float restoredMatrix[16];
+    Kizuri::ComposeMatrix(restored, restoredMatrix);
+    for (int r = 0; r < 3; ++r) {
+      for (int c = 0; c < 3; ++c) {
+        if (std::fabs(restoredMatrix[r * 4 + c] - matrix[r * 4 + c]) > 1e-3f) {
+          return false;
+        }
+      }
+    }
+  }
+  const float identity[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+  float euler[3] = { 1.0f, 1.0f, 1.0f };
+  Kizuri::QuatToEulerDeg(identity, euler);
+  if (std::fabs(euler[0]) > 1e-5f || std::fabs(euler[1]) > 1e-5f || std::fabs(euler[2]) > 1e-5f) {
+    return false;
+  }
+  const float yawEuler[3] = { 0.0f, 90.0f, 0.0f };
+  float yaw[4];
+  Kizuri::EulerDegToQuat(yawEuler, yaw);
+  if (yaw[1] <= 0.0f || std::fabs(yaw[3] - 0.70710678f) > 1e-4f) {
     return false;
   }
   return true;
@@ -11153,6 +11300,8 @@ int main() {
   failures += Check("MaterialNodes", TestMaterialNodes());
   failures += Check("MeshValidation", TestMeshValidation());
   failures += Check("PhysicsFall", TestPhysicsFall());
+  failures += Check("GameWorldPhysicsPose", TestGameWorldPhysicsPose());
+  failures += Check("PhysicsRotation", TestPhysicsRotation());
   failures += Check("PhysicsFloor", TestPhysicsFloor());
   failures += Check("PhysicsScaledFloor", TestPhysicsScaledFloor());
   failures += Check("PhysicsRaycast", TestPhysicsRaycast());
@@ -11223,6 +11372,7 @@ int main() {
   failures += Check("EcsScheduler", TestEcsScheduler());
   failures += Check("EcsSchedulerOrdering", TestEcsSchedulerOrdering());
   failures += Check("EcsSceneBridge", TestEcsSceneBridge());
+  failures += Check("EulerQuatConversion", TestEulerQuatConversion());
   failures += Check("Scene-Parent", TestSceneParent());
   failures += Check("Selection-Set", TestSelectionSet());
   failures += Check("ScreenRect", TestScreenRect());

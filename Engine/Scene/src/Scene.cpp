@@ -231,11 +231,58 @@ void EulerDegToQuat(const float euler[3], float quat[4]) {
   }
   float l = std::sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] + quat[3] * quat[3]);
   if (l > 1e-9f) {
-    quat[0] /= l;
-    quat[1] /= l;
-    quat[2] /= l;
+    quat[0] = -quat[0] / l;
+    quat[1] = -quat[1] / l;
+    quat[2] = -quat[2] / l;
     quat[3] /= l;
   }
+}
+void QuatToEulerDeg(const float quat[4], float euler[3]) {
+  float x = quat[0];
+  float y = quat[1];
+  float z = quat[2];
+  float w = quat[3];
+  float l = std::sqrt(x * x + y * y + z * z + w * w);
+  if (l < 1e-9f) {
+    x = 0.0f;
+    y = 0.0f;
+    z = 0.0f;
+    w = 1.0f;
+  } else {
+    x /= l;
+    y /= l;
+    z /= l;
+    w /= l;
+  }
+  const float m00 = 1.0f - 2.0f * (y * y + z * z);
+  const float m01 = 2.0f * (x * y + w * z);
+  const float m02 = 2.0f * (x * z - w * y);
+  const float m10 = 2.0f * (x * y - w * z);
+  const float m20 = 2.0f * (x * z + w * y);
+  const float m12 = 2.0f * (y * z + w * x);
+  const float m22 = 1.0f - 2.0f * (x * x + y * y);
+  float sy = -m02;
+  if (sy > 1.0f) {
+    sy = 1.0f;
+  } else if (sy < -1.0f) {
+    sy = -1.0f;
+  }
+  const float ry = std::asin(sy);
+  const float cy = std::cos(ry);
+  float rx = 0.0f;
+  float rz = 0.0f;
+  if (std::fabs(cy) > 1e-5f) {
+    rx = std::atan2(m12, m22);
+    rz = std::atan2(m01, m00);
+  } else if (sy > 0.0f) {
+    rx = std::atan2(m10, m20);
+  } else {
+    rx = std::atan2(-m10, -m20);
+  }
+  constexpr float kRadToDeg = 57.29577951308232f;
+  euler[0] = rx * kRadToDeg;
+  euler[1] = ry * kRadToDeg;
+  euler[2] = rz * kRadToDeg;
 }
 void ComposeMatrix(const Transform& t, float m[16]) {  float rx = t.rotation[0] * 0.01745329252f;
   float ry = t.rotation[1] * 0.01745329252f;

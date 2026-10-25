@@ -1360,13 +1360,11 @@ void EditorApp::SyncPhysics(float dt) {
     transform->position[0] = pos[0];
     transform->position[1] = pos[1];
     transform->position[2] = pos[2];
+    QuatToEulerDeg(quat, transform->rotation);
+    EulerDegToQuat(transform->rotation, it->second.lastRot);
     it->second.lastPos[0] = pos[0];
     it->second.lastPos[1] = pos[1];
     it->second.lastPos[2] = pos[2];
-    it->second.lastRot[0] = quat[0];
-    it->second.lastRot[1] = quat[1];
-    it->second.lastRot[2] = quat[2];
-    it->second.lastRot[3] = quat[3];
     it->second.hasLast = true;
   }
   SceneEcsBridge::ExportTransforms(simEcs, scene);

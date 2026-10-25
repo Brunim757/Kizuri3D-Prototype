@@ -275,6 +275,7 @@ void MakeDefaultRigidbody(RigidbodyData& r);
 void MakeDefaultAudioSource(AudioSourceData& a);
 void EntityForward(const Transform& t, float dir[3]);
 void EulerDegToQuat(const float euler[3], float quat[4]);
+void QuatToEulerDeg(const float quat[4], float euler[3]);
 void ComposeMatrix(const Transform& t, float m[16]);
 bool InvertMatrix4(const float m[16], float invOut[16]);
 }

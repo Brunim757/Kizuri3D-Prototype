@@ -170,6 +170,7 @@ void GameWorld::Shutdown() {
   initialized = false;
   audio.Shutdown();
   physics.Shutdown();
+  physBodies.clear();
   jobs.Shutdown();
   ecs.Clear();
   assets.SetGpuRHI(nullptr);
@@ -183,6 +184,10 @@ bool GameWorld::LoadSceneFile(const std::string& path) {
     lastError = "Falha ao carregar a cena " + path;
     return false;
   }
+  for (std::unordered_map<EntityId, uint32_t, EntityIdHash>::const_iterator it = physBodies.begin(); it != physBodies.end(); ++it) {
+    physics.DestroyBody(it->second);
+  }
+  physBodies.clear();
   SceneEcsBridge::Import(scene, ecs);
   return true;
 }
@@ -250,8 +255,22 @@ void GameWorld::SyncPhysics(float dt) {
       desc.extents[0] = rigidbody->extents[0];
       desc.extents[1] = rigidbody->extents[1];
       desc.extents[2] = rigidbody->extents[2];
+      desc.scale[0] = transform->scale[0];
+      desc.scale[1] = transform->scale[1];
+      desc.scale[2] = transform->scale[2];
       desc.friction = rigidbody->friction;
       desc.restitution = rigidbody->restitution;
+      if (rigidbody->colliderType == 3) {
+        const std::string* meshGuid = entity.Get<std::string>(ComponentRegistry::kMesh);
+        const MeshRecord* meshRecord = meshGuid != nullptr && !meshGuid->empty() ? assets.GetByGuid(*meshGuid) : nullptr;
+        if (meshRecord == nullptr || !meshRecord->loaded) {
+          return;
+        }
+        desc.meshVerts = meshRecord->data.positions.data();
+        desc.meshVertCount = meshRecord->data.positions.size() / 3;
+        desc.meshIndices = meshRecord->data.indices.data();
+        desc.meshIndexCount = meshRecord->data.indices.size();
+      }
       const uint32_t created = physics.CreateBody(desc, transform->position, quat);
       if (created == 0xFFFFFFFFu) {
         return;
@@ -289,6 +308,7 @@ void GameWorld::SyncPhysics(float dt) {
     transform->position[0] = pos[0];
     transform->position[1] = pos[1];
     transform->position[2] = pos[2];
+    QuatToEulerDeg(quat, transform->rotation);
   }
   SceneEcsBridge::ExportTransforms(ecs, scene);
 }
