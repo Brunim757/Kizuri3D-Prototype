@@ -75,6 +75,10 @@ cbuffer FogVolCB : register(b6)
     float4 FogVolMax[4];
     float4 FogVolCol[4];
 };
+cbuffer SpotCookieCB : register(b4)
+{
+    row_major float4x4 SpotCookieVP[16];
+};
 Texture2D AlbedoTex : register(t0);
 Texture2D NormalTex : register(t1);
 Texture2D OrmTex : register(t2);
@@ -89,6 +93,8 @@ Texture2D DetailFNormalTex : register(t19);
 Texture2D ShadowAtlas : register(t8);
 TextureCube PointCube : register(t9);
 Texture2D MomentsTX : register(t10);
+Texture2D CookieTX : register(t11);
+Texture2DArray CookieArray : register(t12);
 SamplerState GeoSamp : register(s0);
 SamplerState ShadowSampler : register(s1);
 SamplerState LinearSampler : register(s2);
@@ -641,6 +647,7 @@ float4 main(PSIn pin) : SV_Target
             float att = ApplyAttenuation(dist, range);
             float spot = 1.0;
             float lightShadow = 1.0;
+            float3 cookie = float3(1.0, 1.0, 1.0);
             if (kind > 0.5) {
                 float cosT = dot(L, -LightB[i].xyz);
                 spot = smoothstep(LightC[i].a, LightC[i].a + LightD[i].x, cosT);
@@ -654,14 +661,28 @@ float4 main(PSIn pin) : SV_Target
                         }
                     }
                 }
+                if (Counts.w > 0.5) {
+                    float4 scc = mul(float4(wposB, 1.0), SpotCookieVP[i]);
+                    if (scc.w > 1e-5) {
+                        float2 cuv = scc.xy / scc.w * float2(0.5, -0.5) + 0.5;
+                        if (cuv.x >= 0.0 && cuv.x <= 1.0 && cuv.y >= 0.0 && cuv.y <= 1.0) {
+                            if (Counts.w > 1.5) {
+                                int slice = i < 0 ? 0 : (i > 15 ? 15 : i);
+                                cookie = CookieArray.SampleLevel(LinearSampler, float3(cuv, (float) slice), 0).rgb;
+                            } else {
+                                cookie = CookieTX.SampleLevel(LinearSampler, cuv, 0).rgb;
+                            }
+                        }
+                    }
+                }
             } else {
                 if (ShadowInfo.y > 0.5 && PointMeta.y > 0.5 && (int)(PointMeta.x + 0.5) == i) {
                     lightShadow = SamplePointPCSS(wposB, n, PointMeta.w);
                 }
             }
-            col += ShadeFwd(n, V, L, LightC[i].rgb, alb, rough, metal, F0) * att * spot * lightShadow;
-            col += ShadeSssFwd(n, L, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * att * spot * lightShadow;
-            col += ShadeHairFwd(n, fwdTan, V, L, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * att * spot * lightShadow;
+            col += ShadeFwd(n, V, L, LightC[i].rgb, alb, rough, metal, F0) * att * spot * lightShadow * cookie;
+            col += ShadeSssFwd(n, L, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * att * spot * lightShadow * cookie;
+            col += ShadeHairFwd(n, fwdTan, V, L, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * att * spot * lightShadow * cookie;
         }
     }
     float sint2 = max(SkySun.w, 1e-3);

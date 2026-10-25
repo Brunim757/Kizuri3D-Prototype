@@ -5029,6 +5029,9 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
   float fwdBase[8] = { static_cast<float>(w), static_cast<float>(h), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
   rhi->SetPixelConstantBuffer(0, lightCB);
   rhi->SetPixelConstantBuffer(3, forwardCB);
+  if (spotCookieCB != 0) {
+    rhi->SetPixelConstantBuffer(4, spotCookieCB);
+  }
   if (fogVolCB != 0) {
     rhi->SetPixelConstantBuffer(6, fogVolCB);
   }
@@ -5048,6 +5051,16 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
     rhi->SetPixelTexture(10, shadowMoments);
   } else {
     rhi->SetPixelTexture(10, 0);
+  }
+  if (spotCookieOn && cookieArrayTex != 0) {
+    rhi->SetPixelTexture2D(12, cookieArrayTex);
+    rhi->SetPixelTexture2D(11, 0);
+  } else if (spotCookieOn && spotCookie != 0) {
+    rhi->SetPixelTexture2D(11, spotCookie);
+    rhi->SetPixelTexture2D(12, 0);
+  } else {
+    rhi->SetPixelTexture2D(11, 0);
+    rhi->SetPixelTexture2D(12, 0);
   }
   rhi->SetPixelSampler(2, sampler);
   if (ambientCB != 0) {
@@ -5132,6 +5145,8 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
   rhi->SetPixelTexture(8, 0);
   rhi->SetPixelTexture(9, 0);
   rhi->SetPixelTexture(10, 0);
+  rhi->SetPixelTexture2D(11, 0);
+  rhi->SetPixelTexture2D(12, 0);
   rhi->SetPixelSampler(1, 0);
   rhi->SetPixelSampler(2, 0);
   blend.enable = false;
