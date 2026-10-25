@@ -461,6 +461,32 @@ void GameWorld::Render(float alpha) {
   if (!initialized) {
     return;
   }
+  float view[16];
+  float proj[16];
+  const float aspect = static_cast<float>(viewWidth) / (viewHeight > 0 ? static_cast<float>(viewHeight) : 1.0f);
+  DirectX::XMFLOAT4X4 viewMat;
+  DirectX::XMFLOAT4X4 projMat;
+  DirectX::XMStoreFloat4x4(&viewMat, camera.View());
+  DirectX::XMStoreFloat4x4(&projMat, camera.Projection(aspect));
+  for (int r = 0; r < 4; ++r) {
+    for (int c = 0; c < 4; ++c) {
+      view[r * 4 + c] = viewMat.m[r][c];
+      proj[r * 4 + c] = projMat.m[r][c];
+    }
+  }
+  float camPos[3];
+  camera.GetPosition(camPos[0], camPos[1], camPos[2]);
+  MainCameraSetup mainCam;
+  mainCam.camPos[0] = camPos[0];
+  mainCam.camPos[1] = camPos[1];
+  mainCam.camPos[2] = camPos[2];
+  CameraBasisFromView(view, mainCam.camFwd, mainCam.camRight, mainCam.camUp);
+  mainCam.fovY = camera.fovY;
+  mainCam.aspect = aspect;
+  mainCam.nearZ = camera.nearZ;
+  mainCam.farZ = camera.farZ;
+  renderer.SetMainCamera(mainCam);
+  renderer.BeginObjects(view, proj);
   SubmitSceneLights(renderer, scene, EntityId::Invalid());
   const std::vector<EntityId> ids = scene.All();
   float world[16];
@@ -485,21 +511,6 @@ void GameWorld::Render(float alpha) {
     FillDeferredFromEntity(assets, e->material, material);
     renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, &material, 0.0f, rec->data.aabbMin, rec->data.aabbMax);
   }
-  float view[16];
-  float proj[16];
-  const float aspect = static_cast<float>(viewWidth) / (viewHeight > 0 ? static_cast<float>(viewHeight) : 1.0f);
-  DirectX::XMFLOAT4X4 viewMat;
-  DirectX::XMFLOAT4X4 projMat;
-  DirectX::XMStoreFloat4x4(&viewMat, camera.View());
-  DirectX::XMStoreFloat4x4(&projMat, camera.Projection(aspect));
-  for (int r = 0; r < 4; ++r) {
-    for (int c = 0; c < 4; ++c) {
-      view[r * 4 + c] = viewMat.m[r][c];
-      proj[r * 4 + c] = projMat.m[r][c];
-    }
-  }
-  float camPos[3];
-  camera.GetPosition(camPos[0], camPos[1], camPos[2]);
-  renderer.Render(view, proj, camPos);
+  renderer.EndObjectsToBackbuffer(camPos);
 }
 }

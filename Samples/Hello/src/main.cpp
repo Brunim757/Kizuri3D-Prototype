@@ -3180,6 +3180,91 @@ bool TestGameWorldScene() {
   }
   return true;
 }
+bool TestGameWorldMainCamera() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = false;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", "", options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  world.GetAssets().SetGpuRHI(rhi);
+  Kizuri::MeshAssetData mesh;
+  mesh.positions = { -1.0f, 1.5f, 0.0f, 0.0f, 1.5f, 0.0f, -0.5f, 2.5f, 0.0f, 0.0f, 1.5f, 0.0f, 1.0f, 1.5f, 0.0f, 0.5f, 2.5f, 0.0f };
+  mesh.normals = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  mesh.uvs = { 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f };
+  mesh.tangents = { 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  mesh.indices = { 0, 1, 2, 3, 4, 5 };
+  mesh.aabbMin[0] = -1.0f;
+  mesh.aabbMin[1] = 1.0f;
+  mesh.aabbMin[2] = -1.0f;
+  mesh.aabbMax[0] = 1.0f;
+  mesh.aabbMax[1] = 2.5f;
+  mesh.aabbMax[2] = 1.0f;
+  world.GetAssets().UpsertBatchMesh("batch://runtime_camera", mesh);
+  if (!world.GetAssets().EnsureMeshGpu("batch://runtime_camera", 1u << 20)) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId id = scene.CreateEntity("Quad");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (entity == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  entity->hasMesh = true;
+  entity->meshGuid = "batch://runtime_camera";
+  world.SetCameraPosition(0.0f, 1.5f, -5.0f);
+  world.SetCameraYawPitch(0.0f, 0.0f);
+  world.Render(0.0f);
+  const Kizuri::MainCameraSetup& cam = world.GetRenderer().GetMainCamera();
+  const Kizuri::FreeCamera& freeCam = world.GetCamera();
+  const float fwdLen = std::sqrt(cam.camFwd[0] * cam.camFwd[0] + cam.camFwd[1] * cam.camFwd[1] + cam.camFwd[2] * cam.camFwd[2]);
+  const float rightLen = std::sqrt(cam.camRight[0] * cam.camRight[0] + cam.camRight[1] * cam.camRight[1] + cam.camRight[2] * cam.camRight[2]);
+  const float upLen = std::sqrt(cam.camUp[0] * cam.camUp[0] + cam.camUp[1] * cam.camUp[1] + cam.camUp[2] * cam.camUp[2]);
+  const float fwdRight = cam.camFwd[0] * cam.camRight[0] + cam.camFwd[1] * cam.camRight[1] + cam.camFwd[2] * cam.camRight[2];
+  const float fwdUp = cam.camFwd[0] * cam.camUp[0] + cam.camFwd[1] * cam.camUp[1] + cam.camFwd[2] * cam.camUp[2];
+  const Kizuri::RenderStats& stats = world.GetRenderer().GetStats();
+  const bool ok = std::fabs(cam.camPos[0]) < 1e-5f &&
+                  std::fabs(cam.camPos[1] - 1.5f) < 1e-5f &&
+                  std::fabs(cam.camPos[2] + 5.0f) < 1e-5f &&
+                  std::fabs(cam.fovY - freeCam.fovY) < 1e-5f &&
+                  std::fabs(cam.aspect - 1.6f) < 1e-5f &&
+                  std::fabs(cam.nearZ - freeCam.nearZ) < 1e-5f &&
+                  std::fabs(cam.farZ - freeCam.farZ) < 1e-5f &&
+                  std::fabs(fwdLen - 1.0f) < 1e-4f &&
+                  std::fabs(rightLen - 1.0f) < 1e-4f &&
+                  std::fabs(upLen - 1.0f) < 1e-4f &&
+                  std::fabs(fwdRight) < 1e-4f &&
+                  std::fabs(fwdUp) < 1e-4f &&
+                  stats.geometryDraws == 1 &&
+                  stats.geometryTris == 2;
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestPhysicsFall() {
   Kizuri::JobSystem jobs;
   if (!jobs.Initialize()) {
@@ -11472,6 +11557,7 @@ int main() {
   failures += Check("GameLoopPause", TestGameLoopPause());
   failures += Check("GameLoopSystemOrder", TestGameLoopSystemOrder());
   failures += Check("GameWorldScene", TestGameWorldScene());
+  failures += Check("GameWorldMainCamera", TestGameWorldMainCamera());
   failures += Check("RigidbodySerialize", TestRigidbodySerialize());
   failures += Check("Ragdoll", TestRagdoll());
   failures += Check("LodCoverage", TestLodCoverage());

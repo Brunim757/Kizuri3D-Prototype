@@ -251,6 +251,7 @@ public:
   void SetCookieArray(RHITexture tex);
   void SetMaterialLinkGroup(uint32_t matId, uint32_t mask);
   void SetMainCamera(const MainCameraSetup& setup);
+  const MainCameraSetup& GetMainCamera() const { return mainCam; }
   void SetShadowDebug(bool debug);
   void SetDebugView(int mode);
   int GetDebugView() const;
