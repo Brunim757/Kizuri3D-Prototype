@@ -58,8 +58,8 @@ A Fase 3 foi deliberadamente construída como uma fundação robusta (não um MV
 | 6 — Física (Jolt) | ✅ concluída | Jolt integrado, corpos/coliders, passo fixo 60Hz + interpolação, raycasts, ragdoll/joints, Inspector de Rigidbody, wireframe de colliders, toggle Simulate |
 | 7 — Áudio + Mixer | ✅ concluída | Núcleo sobre miniaudio (device + decoder), mixer próprio com hierarquia de buses (Master/Música/SFX/Voz/Ambiente), volume/mute/solo, ducking entre buses, reverb (Freeverb) por bus, camada 3D posicional própria (atenuação linear/inverse/exponential + pan direcional), componente `AudioSource` no ECS (Undo/Redo + EditQueue + serialização + Inspector), painel "Audio Mixer" no Editor, mixer salvo como asset `.kzmixer`. 9 testes no CI |
 | 8 — Runtime de Jogo | ✅ concluída | **A espinha**: `Engine/Game` com `GameLoop` (passo fixo determinístico + sistemas ordenados + estatísticas), `GameWorld` (cena + assets + renderer + física + áudio + câmera), `GameApp` (janela + RHI + loop) e o executável de jogo `KizuriRuntime.exe`. Material e luzes agora têm **uma implementação só** (Editor e runtime). 4 testes no CI |
-| 9 — ECS e Gameplay Framework | 🔄 **em andamento** | `ComponentRegistry` é a fonte única de presença/defaults/reset/serialização/Undo/metadados de Inspector dos 11 componentes; Add/Remove e Save/Load são genéricos. O property grid é gerado a partir do registro para componentes sem editor especializado: `Post Volume` e `Fog Volume` já usam o caminho genérico, e um componente novo com campos padrão aparece no Inspector e no Add Component apenas por ser registrado. O storage ECS usa colunas sparse-set por componente com `Transform` built-in, queries e scheduler por dependências read/write; `SceneEcsBridge` preserva os IDs da cena e o runtime (`GameWorld`/`GameApp`) executa física e áudio sobre ECS. O Play-in-Editor usa snapshot por raiz e cena isolada, com Play/Pause/Stop e Inspector somente leitura. Restam: migrar a física do Play-in-Editor para ECS, migrar os editores legados para o property grid genérico e validar visualmente Play/DnD/property grid |
-| 10 — Animação | ⏳ próxima fase | `Engine/Animation` ainda é stub. O shader já tem skinning pronto (o renderer suporta skinned meshes), mas falta o sistema: esqueleto, blending em camadas, IK de pés/mãos, look-at, root motion, retargeting e state machine no Editor |
+| 9 — ECS e Gameplay Framework | 🟡 **implementada; aguardando validação visual** | `ComponentRegistry` é a fonte única de presença/defaults/reset/serialização/Undo/metadados de Inspector dos 11 componentes; Add/Remove e Save/Load são genéricos. O property grid é gerado a partir do registro para componentes sem editor especializado: `Post Volume` e `Fog Volume` já usam o caminho genérico, e um componente novo com campos padrão aparece no Inspector e no Add Component apenas por ser registrado. O storage ECS usa colunas sparse-set por componente com `Transform` built-in, queries e scheduler por dependências read/write; `SceneEcsBridge` preserva os IDs da cena e o runtime (`GameWorld`/`GameApp`) executa física e áudio sobre ECS. O Play-in-Editor usa snapshot por raiz, cena isolada, `simEcs` importado por `SceneEcsBridge` e física/áudio rodando sobre ECS, com Play/Pause/Stop e Inspector somente leitura. A cena editável continua sendo a fonte de autoria/serialização; o ECS é o runtime de simulação. Restam: validar visualmente Play/DnD/property grid e decidir se o ECS vira fonte única numa fase própria (9.5) |
+| 10 — Animação | ⏳ próxima fase | `Engine/Animation` ainda é stub. O importador reconhece glTF com skin, mas entrega a malha em bind pose; o runtime ainda não tem esqueleto, skinning, blending em camadas, IK de pés/mãos, look-at, root motion, retargeting nem state machine no Editor |
 | 11 — Scripting C# | ⏳ pendente | `Engine/Scripting` ainda é stub |
 | 12–25 | ⏳ pendente | Prefabs, Scripting Visual, Câmera/Input, IA/Pathfinding, Rede, Save, VFX, UI de jogo, Level Design, Polimento, Docs, Launcher, Build, Vertical Slice |
 
@@ -248,6 +248,20 @@ Lição operativa: **nunca chamar `delete` em objetos do Jolt v5** — o refcoun
 - **Inspector/Hierarquia**: property grid gerado a partir do registro (sem código por componente); "Add Component" genérico (lista todos os componentes já registrados); parenting por drag-and-drop
 
 **Pronto quando:** é possível criar uma Entity, adicionar qualquer componente via "Add Component", organizar em hierarquia por drag-and-drop, e testar com Play-in-Editor — e um componente novo aparece no Inspector apenas por ser registrado.
+
+**Estado atual:** a ponte cena↔ECS é o `SceneEcsBridge`: a cena continua sendo a fonte de autoria e serialização; o ECS é importado no Play-in-Editor e no runtime, e os resultados de física/áudio são exportados de volta. O Play-in-Editor usa snapshot por raiz, cena isolada, `simEcs` e sistemas de física/áudio; o Inspector fica somente leitura. Os componentes com editores especializados (Light, Rigidbody, AudioSource, Probe, LOD, Lightmap) mantêm o desenho dedicado; os demais usam o property grid genérico. A validação visual de Play/DnD/property grid ainda depende do teste no E5700/GT 610.
+
+### Fase 9.5 — ECS como fonte única (proposta, não aprovada)
+
+**Objetivo:** eliminar a ida e volta cena→ECS→cena e fazer o ECS ser a única fonte de verdade em edição e runtime, deixando a `Scene` apenas como formato de serialização/importação. É uma refatoração transversal (Hierarquia, Inspector, Undo/Redo, renderização, física, áudio, Play-in-Editor e Prefabs), não uma feature isolada.
+
+- Transformar `Scene` em adaptador de I/O (`.kzscene` ↔ ECS), sem armazenar componentes duplicados
+- Fazer Hierarquia, Inspector, seleção e Undo/Redo operarem diretamente no ECS
+- Fazer a renderização percorrer o ECS (ou um snapshot imutável dele) em vez da `Scene`
+- Unificar Play-in-Editor e runtime no mesmo mundo ECS, sem exportar transforms de volta
+- Migrar Prefabs (Fase 12) para instanciar diretamente no ECS
+
+**Por que agora:** Animação (Fase 10) e Prefabs (Fase 12) vão criar novos componentes e hierarquias; fazer a migração antes evita reescrever esses sistemas duas vezes. **Por que não bloquear a Fase 9:** o escopo aprovado da Fase 9 é a ponte cena↔ECS, e a arquitetura híbrida atual já entrega autoria, serialização, Play-in-Editor e runtime. A Fase 9.5 só deve começar se houver decisão explícita de trocar a fonte de verdade.
 
 ---
 
@@ -495,6 +509,7 @@ Fase 5  → Iluminação/sombras avançadas + céu procedural + Inspector de Lig
 Fase 6  → Física (Jolt) + Inspector de Rigidbody/Ragdoll
 Fase 7  → Áudio + Mixer completo (buses, ducking, reverb) + Inspector de AudioSource
 Fase 9  → ECS/Gameplay Framework + "Add Component" genérico + parenting + Play-in-Editor
+Fase 9.5 (opcional, proposta) → ECS como fonte única; só se aprovada antes da Fase 10/12
 Fase 10 → Animação + Retargeting + Inspector de Animator + editor de state machine
 Fase 11 → Scripting C#/Roslyn + Inspector de Script
 Fase 12 → Sistema de Prefabs (overrides, variants, apply/revert)

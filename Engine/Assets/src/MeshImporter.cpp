@@ -1456,7 +1456,7 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
       }
     }
     if (ok && data->skins_count > 0 && log != nullptr) {
-      log->Add(LogLevel::Warning, "Skinned mesh imported in bind pose; skeleton arrives in Fase 8");
+      log->Add(LogLevel::Warning, "Skinned mesh imported in bind pose; skeleton arrives in Fase 10");
     }
     if (texJobs.size() == 1 && ok) {
       LogStore jl;
