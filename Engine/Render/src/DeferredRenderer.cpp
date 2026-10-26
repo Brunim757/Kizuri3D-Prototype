@@ -855,7 +855,7 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
     return false;
   }
   RecreateMomentsTargets();
-  float taaInit[56] = { 0.0f };
+  float taaInit[72] = { 0.0f };
   taaCB = rhi->CreateConstantBuffer(sizeof(taaInit), &taaInit);
   if (taaCB == 0) {
     return false;
@@ -6152,9 +6152,12 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
           taaVPU[cc * 4 + rr] = s;
         }
       }
-      float tc[56];
+      float tc[72];
       std::memcpy(tc, taaVP, sizeof(taaVP));
       std::memcpy(tc + 40, taaVPU, sizeof(taaVPU));
+      float taaCurrVPU[16];
+      MulViewProj(lastViewU, lastProjU, taaCurrVPU);
+      std::memcpy(tc + 56, taaCurrVPU, sizeof(taaCurrVPU));
       tc[16] = camPos[0];
       tc[17] = camPos[1];
       tc[18] = camPos[2];
@@ -6188,7 +6191,8 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       rhi->UpdateConstantBuffer(taaCB, &tc, sizeof(tc));
       rhi->SetPixelConstantBuffer(0, taaCB);
       rhi->SetPixelSampler(0, sampler);
-      RHIRenderTarget hist = (taaValid && taaRead != 0) ? taaRead : taaA;
+      rhi->SetPixelSampler(1, pointSampler);
+      RHIRenderTarget hist = (taaValid && taaRead != 0) ? taaRead : taaB;
       RHIRenderTarget tout = (taaValid && taaRead == taaA) ? taaB : taaA;
       rhi->SetRenderTargets(1, &tout, 0);
       RHIViewport tvp;
@@ -6208,6 +6212,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       rhi->SetPixelTexture(0, 0);
       rhi->SetPixelTexture(1, 0);
       rhi->SetPixelTexture(2, 0);
+      rhi->SetPixelSampler(1, 0);
       taaRead = tout;
       taaWrite = tout;
       taaValid = true;

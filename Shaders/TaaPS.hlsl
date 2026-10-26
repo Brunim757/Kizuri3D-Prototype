@@ -8,11 +8,13 @@ cbuffer TaaCB : register(b0)
     float4 CamUp;
     float4 TanWH;
     row_major float4x4 PrevVPU;
+    row_major float4x4 CurrVPU;
 };
 Texture2D CurrentTX : register(t0);
 Texture2D HistoryTX : register(t1);
 Texture2D PositionTX : register(t2);
 SamplerState LinearSampler : register(s0);
+SamplerState PointSampler : register(s1);
 struct PSIn
 {
     float4 pos : SV_Position;
@@ -32,38 +34,49 @@ float3 ClipAABB(float3 hist, float3 mn, float3 mx)
 }
 float4 main(PSIn pin) : SV_Target
 {
-    float3 wpos = PositionTX.Sample(LinearSampler, pin.uv).xyz;
+    float3 wpos = PositionTX.Sample(PointSampler, pin.uv).xyz;
     float3 curr = CurrentTX.Sample(LinearSampler, pin.uv).rgb;
     float valid = TaaMisc.x;
     float blend = TaaMisc.y;
-    if (valid < 0.5) {
-        return float4(curr, 1.0);
-    }
     float isSky = dot(wpos, wpos) < 1e-8 ? 1.0 : 0.0;
-    float cdepth = dot(wpos - CamPos.xyz, CamFwd.xyz);
+    float cdepth = isSky > 0.5 ? 10000.0 : dot(wpos - CamPos.xyz, CamFwd.xyz);
+    if (valid < 0.5) {
+        return float4(curr, cdepth);
+    }
     float3 reprojP = wpos;
     if (isSky > 0.5) {
         float2 sndc = float2(pin.uv.x * 2.0 - 1.0, 1.0 - pin.uv.y * 2.0);
         float3 sray = CamFwd.xyz + CamRight.xyz * (sndc.x * TanWH.x) + CamUp.xyz * (sndc.y * TanWH.y);
         reprojP = CamPos.xyz + normalize(sray) * 10000.0;
-        cdepth = 10000.0;
     }
-    float4 pp;
+    float4 ppHist;
+    float4 ppPrevU;
     if (isSky > 0.5) {
-        pp = mul(float4(reprojP, 1.0), PrevVPU);
+        ppHist = mul(float4(reprojP, 1.0), PrevVPU);
+        ppPrevU = ppHist;
     } else {
-        pp = mul(float4(reprojP, 1.0), PrevVP);
+        ppHist = mul(float4(reprojP, 1.0), PrevVP);
+        ppPrevU = mul(float4(reprojP, 1.0), PrevVPU);
     }
-    float2 puv = float2(-10.0, -10.0);
+    float4 ppCurrU = mul(float4(reprojP, 1.0), CurrVPU);
+    float2 histUv = float2(-10.0, -10.0);
+    float2 prevUv = float2(-10.0, -10.0);
+    float2 currUv = float2(-10.0, -10.0);
     float pdepth = 1e9;
-    if (pp.w > 1e-5) {
-        puv = pp.xy / pp.w * float2(0.5, -0.5) + 0.5;
+    if (ppHist.w > 1e-5) {
+        histUv = ppHist.xy / ppHist.w * float2(0.5, -0.5) + 0.5;
         pdepth = cdepth;
     }
-    float3 hist = CurrentTX.Sample(LinearSampler, pin.uv).rgb;
+    if (ppPrevU.w > 1e-5) {
+        prevUv = ppPrevU.xy / ppPrevU.w * float2(0.5, -0.5) + 0.5;
+    }
+    if (ppCurrU.w > 1e-5) {
+        currUv = ppCurrU.xy / ppCurrU.w * float2(0.5, -0.5) + 0.5;
+    }
+    float3 hist = curr;
     float hdepth = pdepth;
-    if (puv.x >= 0.0 && puv.x <= 1.0 && puv.y >= 0.0 && puv.y <= 1.0) {
-        float4 hs = HistoryTX.Sample(LinearSampler, puv);
+    if (histUv.x >= 0.0 && histUv.x <= 1.0 && histUv.y >= 0.0 && histUv.y <= 1.0) {
+        float4 hs = HistoryTX.Sample(LinearSampler, histUv);
         hist = hs.rgb;
         hdepth = hs.a;
     }
@@ -91,7 +104,10 @@ float4 main(PSIn pin) : SV_Target
     float3 mn = mean - 1.25 * sigma;
     float3 mx = mean + 1.25 * sigma;
     float3 clipped = ClipAABB(hist, mn, mx);
-    float2 motionPx = (puv - pin.uv) / max(px, float2(1e-6, 1e-6));
+    float2 motionPx = float2(0.0, 0.0);
+    if (ppPrevU.w > 1e-5 && ppCurrU.w > 1e-5) {
+        motionPx = (prevUv - currUv) / max(px, float2(1e-6, 1e-6));
+    }
     float adapt = saturate(length(motionPx) * 0.25);
     float b = lerp(1.0, blend, useHist * (1.0 - adapt));
     float3 outc = lerp(curr, clipped, 1.0 - b);

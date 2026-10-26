@@ -7123,6 +7123,51 @@ bool TestAutoExposure() {  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+bool LoadShaderText(const char* name, std::string& out) {
+  const char* dirs[3] = { "Shaders", "Samples/../Shaders", "build/bin/Release/Shaders" };
+  for (int d = 0; d < 3; ++d) {
+    std::string path = std::string(dirs[d]) + "/" + name;
+    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    if (fp == nullptr) {
+      continue;
+    }
+    std::fseek(fp, 0, SEEK_END);
+    long size = std::ftell(fp);
+    std::fseek(fp, 0, SEEK_SET);
+    if (size <= 0) {
+      std::fclose(fp);
+      continue;
+    }
+    out.resize(static_cast<size_t>(size));
+    size_t got = std::fread(&out[0], 1, out.size(), fp);
+    std::fclose(fp);
+    if (got == out.size()) {
+      return true;
+    }
+  }
+  return false;
+}
+bool TestTaaReprojection() {
+  std::string src;
+  if (!LoadShaderText("TaaPS.hlsl", src)) {
+    return false;
+  }
+  const char* required[7] = {
+    "row_major float4x4 CurrVPU;",
+    "PositionTX.Sample(PointSampler, pin.uv)",
+    "mul(float4(reprojP, 1.0), PrevVP)",
+    "mul(float4(reprojP, 1.0), PrevVPU)",
+    "mul(float4(reprojP, 1.0), CurrVPU)",
+    "motionPx = (prevUv - currUv)",
+    "HistoryTX.Sample(LinearSampler, histUv)"
+  };
+  for (int i = 0; i < 7; ++i) {
+    if (src.find(required[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  return true;
+}
 bool TestTaaHistory() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
   if (rhi == nullptr) {
@@ -12200,6 +12245,7 @@ int main() {
   failures += Check("TaaOff", TestTaaOff());
   failures += Check("TaaResize", TestTaaResize());
   failures += Check("TaaPassDelta", TestTaaPassDelta());
+  failures += Check("TaaReprojection", TestTaaReprojection());
   failures += Check("RHI-StateCache", TestStateCache());
   failures += Check("FreeCamera", TestCamera());
   failures += Check("MeshLoader-gltf", TestMeshLoader());
