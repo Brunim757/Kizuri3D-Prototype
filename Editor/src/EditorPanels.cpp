@@ -1436,7 +1436,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
       }
     }
     std::vector<const TextureAssetData*> cookieSlices(16, nullptr);
-    std::string cookieKey = viewCookieGuid + "|";
+    std::string cookieKey = std::to_string(pointCount) + "|" + viewCookieGuid + "|";
     size_t spotOrd = 0;
     for (size_t i = 0; i < lightIds.size(); ++i) {
       const Entity* ce = scene.Get(lightIds[i]);
