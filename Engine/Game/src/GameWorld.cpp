@@ -37,9 +37,8 @@ static void SubmitSceneFog(DeferredRenderer& renderer, const Scene& scene) {
     renderer.AddFogVolume(bmin, bmax, e->fog.density, e->fog.color);
   }
 }
-static void SubmitScenePost(DeferredRenderer& renderer, const Scene& scene, const float camPos[3]) {
+void GameWorld::SubmitScenePost(const std::vector<EntityId>& ids, const float camPos[3]) {
   const PostData* active = nullptr;
-  const std::vector<EntityId> ids = scene.All();
   for (size_t i = 0; i < ids.size(); ++i) {
     const Entity* e = scene.Get(ids[i]);
     if (e == nullptr || !e->hasPost) {
@@ -56,6 +55,10 @@ static void SubmitScenePost(DeferredRenderer& renderer, const Scene& scene, cons
     }
   }
   if (active == nullptr) {
+    renderer.SetGrade(baseExposure, baseToneMode == 0);
+    renderer.SetToneMapping(baseToneMode);
+    renderer.SetGrading(baseContrast, baseSaturation, 0.0f, 0.0f);
+    renderer.SetBloom(baseBloom);
     return;
   }
   renderer.SetGrade(active->exposure, active->toneMap == 0);
@@ -409,6 +412,11 @@ bool GameWorld::Initialize(IRHI* rhi, int width, int height, const std::string& 
     low.renderScale = options.renderScale > 0.0f ? options.renderScale : 0.5f;
     ApplyQualityToRenderer(renderer, low);
   }
+  baseExposure = renderer.Exposure();
+  baseToneMode = renderer.ToneMappingMode();
+  baseContrast = renderer.GradeContrast();
+  baseSaturation = renderer.GradeSaturation();
+  baseBloom = renderer.BloomStrength();
   if (options.loadAssets && !assetsDir.empty()) {
     assets.SetAssetsDir(assetsDir);
     assets.SetGpuRHI(rhi);
@@ -764,9 +772,9 @@ void GameWorld::Render(float alpha) {
   mainCam.nearZ = camera.nearZ;
   mainCam.farZ = camera.farZ;
   renderer.SetMainCamera(mainCam);
-  SubmitSceneFog(renderer, scene);
-  SubmitScenePost(renderer, scene, camPos);
   const std::vector<EntityId> ids = scene.All();
+  SubmitSceneFog(renderer, scene);
+  SubmitScenePost(ids, camPos);
   renderer.BeginObjects(view, proj);
   SubmitSceneCookies(ids);
   SubmitSceneLights(renderer, scene, EntityId::Invalid());

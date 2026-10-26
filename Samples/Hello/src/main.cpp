@@ -3552,7 +3552,49 @@ bool TestGameWorldPostVolumes() {
        std::fabs(renderer.GradeContrast() - 1.3f) < 1e-5f &&
        std::fabs(renderer.GradeSaturation() - 0.6f) < 1e-5f &&
        std::fabs(renderer.BloomStrength() - 0.8f) < 1e-5f;
+  world.SetCameraPosition(100.0f, 0.0f, 0.0f);
+  world.Render(0.0f);
+  ok = ok && std::fabs(renderer.Exposure() - 1.0f) < 1e-5f &&
+       renderer.AcesEnabled() &&
+       renderer.ToneMappingMode() == 0 &&
+       std::fabs(renderer.GradeContrast() - 1.0f) < 1e-5f &&
+       std::fabs(renderer.GradeSaturation() - 1.0f) < 1e-5f &&
+       std::fabs(renderer.BloomStrength() - 0.5f) < 1e-5f;
   world.Shutdown();
+  Kizuri::GameWorld lowWorld;
+  Kizuri::GameWorldOptions lowOptions;
+  lowOptions.loadAssets = false;
+  lowOptions.enableAudio = false;
+  lowOptions.enablePhysics = false;
+  lowOptions.lowSpec = true;
+  lowOptions.renderScale = 0.5f;
+  if (!lowWorld.Initialize(rhi, 160, 100, "Shaders", "", lowOptions)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  const Kizuri::EntityId lowPostId = lowWorld.GetScene().CreateEntity("LowPost");
+  Kizuri::Entity* lowPost = lowWorld.GetScene().Get(lowPostId);
+  if (lowPost == nullptr) {
+    lowWorld.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  lowPost->hasPost = true;
+  lowPost->post.size[0] = 4.0f;
+  lowPost->post.size[1] = 4.0f;
+  lowPost->post.size[2] = 4.0f;
+  lowPost->post.exposure = 2.0f;
+  lowPost->post.bloom = 0.9f;
+  lowWorld.SetCameraPosition(0.0f, 0.0f, 0.0f);
+  lowWorld.Render(0.0f);
+  lowWorld.SetCameraPosition(100.0f, 0.0f, 0.0f);
+  lowWorld.Render(0.0f);
+  const Kizuri::DeferredRenderer& lowRenderer = lowWorld.GetRenderer();
+  ok = ok && std::fabs(lowRenderer.Exposure() - 1.0f) < 1e-5f &&
+       std::fabs(lowRenderer.BloomStrength() - 0.0f) < 1e-5f;
+  lowWorld.Shutdown();
   rhi->Shutdown();
   Kizuri::DestroyRHI(rhi);
   return ok;

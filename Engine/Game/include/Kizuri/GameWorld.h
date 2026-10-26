@@ -82,11 +82,17 @@ private:
   std::vector<std::string> lastDecalGuids;
   std::vector<float> lastDecalRects;
   std::string lastCookieKey;
+  float baseExposure = 1.0f;
+  int baseToneMode = 0;
+  float baseContrast = 1.0f;
+  float baseSaturation = 1.0f;
+  float baseBloom = 0.5f;
   float lastDelta = 0.0f;
   std::string assetsRoot;
   void ClearAudioSources();
   void SubmitDecals(const std::vector<EntityId>& ids, float dt);
   void SubmitSceneCookies(const std::vector<EntityId>& ids);
+  void SubmitScenePost(const std::vector<EntityId>& ids, const float camPos[3]);
   bool initialized = false;
   int viewWidth = 1280;
   int viewHeight = 720;
