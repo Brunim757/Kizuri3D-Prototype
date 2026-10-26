@@ -3557,6 +3557,101 @@ bool TestGameWorldPostVolumes() {
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+bool TestGameWorldSpotCookies() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = false;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", "", options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  world.GetAssets().SetGpuRHI(rhi);
+  const std::string texGuid = world.GetAssets().CreateProceduralTexture(0, 32, 32);
+  bool ok = !texGuid.empty();
+  if (ok) {
+    world.GetAssets().RequestTexture(texGuid, 0.0f);
+    world.GetAssets().DrainUploads(rhi, 16u * 1024u * 1024u);
+    const Kizuri::TextureRecord* texture = world.GetAssets().GetTexByGuid(texGuid);
+    ok = texture != nullptr && texture->loaded && texture->gpu != 0;
+  }
+  if (!ok) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId spotId = scene.CreateEntity("Spot");
+  Kizuri::Entity* spot = scene.Get(spotId);
+  if (spot == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  spot->hasLight = true;
+  spot->light.type = static_cast<int>(Kizuri::LightType::Spot);
+  spot->light.cookieGuid = "missing://cookie";
+  spot->light.radius = 12.0f;
+  spot->light.intensity = 5.0f;
+  spot->transform.position[1] = 2.0f;
+  spot->transform.rotation[0] = -45.0f;
+  world.SetCameraPosition(0.0f, 1.0f, -6.0f);
+  world.SetCameraYawPitch(0.0f, 0.0f);
+  world.Render(0.0f);
+  const Kizuri::DeferredRenderer& renderer = world.GetRenderer();
+  ok = !renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() == 0;
+  spot->light.cookieGuid = texGuid;
+  world.Render(0.0f);
+  const Kizuri::RHITexture firstArray = renderer.CookieArrayTexture();
+  ok = ok && renderer.SpotCookieArrayEnabled() && firstArray != 0;
+  const Kizuri::EntityId pointId = scene.CreateEntity("Point");
+  Kizuri::Entity* point = scene.Get(pointId);
+  if (point == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  point->hasLight = true;
+  point->light.type = static_cast<int>(Kizuri::LightType::Point);
+  point->transform.position[1] = 3.0f;
+  world.Render(0.0f);
+  const Kizuri::RHITexture shiftedArray = renderer.CookieArrayTexture();
+  ok = ok && renderer.SpotCookieArrayEnabled() && shiftedArray != 0 && shiftedArray != firstArray;
+  spot->light.cookieGuid.clear();
+  world.Render(0.0f);
+  ok = ok && !renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() == 0;
+  spot->light.cookieGuid = texGuid;
+  world.Render(0.0f);
+  ok = ok && renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() != 0;
+  scene.DeleteEntity(spotId);
+  world.Render(0.0f);
+  ok = ok && !renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() == 0;
+  scene.DeleteEntity(pointId);
+  world.Render(0.0f);
+  ok = ok && !renderer.SpotCookieArrayEnabled();
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestGameWorldFogVolumes() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
   if (rhi == nullptr) {
@@ -11991,6 +12086,7 @@ int main() {
   failures += Check("GameWorldDecals", TestGameWorldDecals());
   failures += Check("GameWorldPostVolumes", TestGameWorldPostVolumes());
   failures += Check("GameWorldFogVolumes", TestGameWorldFogVolumes());
+  failures += Check("GameWorldSpotCookies", TestGameWorldSpotCookies());
   failures += Check("GameMaterialParts", TestGameMaterialParts());
   failures += Check("RigidbodySerialize", TestRigidbodySerialize());
   failures += Check("Ragdoll", TestRagdoll());

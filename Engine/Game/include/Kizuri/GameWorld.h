@@ -81,10 +81,12 @@ private:
   std::string lastDecalKey;
   std::vector<std::string> lastDecalGuids;
   std::vector<float> lastDecalRects;
+  std::string lastCookieKey;
   float lastDelta = 0.0f;
   std::string assetsRoot;
   void ClearAudioSources();
   void SubmitDecals(const std::vector<EntityId>& ids, float dt);
+  void SubmitSceneCookies(const std::vector<EntityId>& ids);
   bool initialized = false;
   int viewWidth = 1280;
   int viewHeight = 720;

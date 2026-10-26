@@ -249,6 +249,8 @@ public:
   void SetSpotCookie(RHITexture tex);
   void SetSpotCookieOn(bool on);
   void SetCookieArray(RHITexture tex);
+  bool SpotCookieArrayEnabled() const { return spotCookieOn && cookieArrayTex != 0; }
+  RHITexture CookieArrayTexture() const { return cookieArrayTex; }
   void SetMaterialLinkGroup(uint32_t matId, uint32_t mask);
   void SetMainCamera(const MainCameraSetup& setup);
   const MainCameraSetup& GetMainCamera() const { return mainCam; }

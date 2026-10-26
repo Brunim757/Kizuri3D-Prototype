@@ -226,6 +226,49 @@ void GameWorld::SubmitDecals(const std::vector<EntityId>& ids, float dt) {
     }
   }
 }
+void GameWorld::SubmitSceneCookies(const std::vector<EntityId>& ids) {
+  size_t pointCount = 0;
+  for (size_t i = 0; i < ids.size(); ++i) {
+    const Entity* e = scene.Get(ids[i]);
+    if (e != nullptr && e->hasLight && e->light.type == static_cast<int>(LightType::Point)) {
+      ++pointCount;
+    }
+  }
+  std::vector<const TextureAssetData*> slices(16, nullptr);
+  std::string key = std::to_string(pointCount) + "|";
+  size_t spotOrd = 0;
+  bool anyLoaded = false;
+  for (size_t i = 0; i < ids.size(); ++i) {
+    const Entity* e = scene.Get(ids[i]);
+    if (e == nullptr || !e->hasLight || e->light.type != static_cast<int>(LightType::Spot)) {
+      continue;
+    }
+    const size_t slice = pointCount + spotOrd;
+    ++spotOrd;
+    key += e->light.cookieGuid;
+    key += "|";
+    if (slice >= 16 || e->light.cookieGuid.empty()) {
+      continue;
+    }
+    const TextureRecord* tr = assets.GetTexByGuid(e->light.cookieGuid);
+    if (tr != nullptr && tr->loaded) {
+      key += "1|";
+      slices[slice] = &tr->data;
+      anyLoaded = true;
+    } else {
+      key += "0|";
+    }
+  }
+  if (key != lastCookieKey) {
+    lastCookieKey = key;
+    if (anyLoaded) {
+      renderer.SetCookieArray(assets.BuildCookieArray(slices));
+    } else {
+      renderer.SetCookieArray(0);
+    }
+  }
+  renderer.SetSpotCookieOn(anyLoaded);
+}
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight) {
   renderer.ClearLights();
   bool any = false;
@@ -395,6 +438,7 @@ void GameWorld::Shutdown() {
   lastDecalKey.clear();
   lastDecalGuids.clear();
   lastDecalRects.clear();
+  lastCookieKey.clear();
   lastDelta = 0.0f;
   assetsRoot.clear();
   audio.Shutdown();
@@ -422,6 +466,7 @@ bool GameWorld::LoadSceneFile(const std::string& path) {
   lastDecalKey.clear();
   lastDecalGuids.clear();
   lastDecalRects.clear();
+  lastCookieKey.clear();
   SceneEcsBridge::Import(scene, ecs);
   return true;
 }
@@ -717,9 +762,10 @@ void GameWorld::Render(float alpha) {
   renderer.SetMainCamera(mainCam);
   SubmitSceneFog(renderer, scene);
   SubmitScenePost(renderer, scene, camPos);
-  renderer.BeginObjects(view, proj);
-  SubmitSceneLights(renderer, scene, EntityId::Invalid());
   const std::vector<EntityId> ids = scene.All();
+  renderer.BeginObjects(view, proj);
+  SubmitSceneCookies(ids);
+  SubmitSceneLights(renderer, scene, EntityId::Invalid());
   float world[16];
   for (size_t i = 0; i < ids.size(); ++i) {
     const Entity* e = scene.Get(ids[i]);
