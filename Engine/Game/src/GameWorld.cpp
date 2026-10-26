@@ -54,11 +54,22 @@ void GameWorld::SubmitScenePost(const std::vector<EntityId>& ids, const float ca
     }
   }
   if (active == nullptr) {
-    renderer.SetGrade(baseExposure, baseToneMode == 0);
-    renderer.SetToneMapping(baseToneMode);
-    renderer.SetGrading(baseContrast, baseSaturation, 0.0f, 0.0f);
-    renderer.SetBloom(baseBloom);
+    if (postVolumeActive) {
+      renderer.SetGrade(baseExposure, baseToneMode == 0);
+      renderer.SetToneMapping(baseToneMode);
+      renderer.SetGrading(baseContrast, baseSaturation, 0.0f, 0.0f);
+      renderer.SetBloom(baseBloom);
+      postVolumeActive = false;
+    }
     return;
+  }
+  if (!postVolumeActive) {
+    baseExposure = renderer.Exposure();
+    baseToneMode = renderer.ToneMappingMode();
+    baseContrast = renderer.GradeContrast();
+    baseSaturation = renderer.GradeSaturation();
+    baseBloom = renderer.BloomStrength();
+    postVolumeActive = true;
   }
   renderer.SetGrade(active->exposure, active->toneMap == 0);
   renderer.SetToneMapping(active->toneMap);
@@ -413,11 +424,6 @@ bool GameWorld::Initialize(IRHI* rhi, int width, int height, const std::string& 
     low.renderScale = options.renderScale > 0.0f ? options.renderScale : 0.5f;
     ApplyQualityToRenderer(renderer, low);
   }
-  baseExposure = renderer.Exposure();
-  baseToneMode = renderer.ToneMappingMode();
-  baseContrast = renderer.GradeContrast();
-  baseSaturation = renderer.GradeSaturation();
-  baseBloom = renderer.BloomStrength();
   if (options.loadAssets && !assetsDir.empty()) {
     assets.SetAssetsDir(assetsDir);
     assets.SetGpuRHI(rhi);
@@ -452,6 +458,7 @@ void GameWorld::Shutdown() {
   lastDecalGuids.clear();
   lastDecalRects.clear();
   lastCookieKey.clear();
+  postVolumeActive = false;
   lastDelta = 0.0f;
   assetsRoot.clear();
   audio.Shutdown();

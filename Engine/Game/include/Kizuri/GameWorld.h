@@ -88,6 +88,7 @@ private:
   float baseContrast = 1.0f;
   float baseSaturation = 1.0f;
   float baseBloom = 0.5f;
+  bool postVolumeActive = false;
   float lastDelta = 0.0f;
   std::string assetsRoot;
   void ClearAudioSources();
