@@ -41,6 +41,7 @@
 #include "Kizuri/Ecs.h"
 #include "Kizuri/GameLoop.h"
 #include "Kizuri/GameWorld.h"
+#include "Kizuri/GameMaterial.h"
 #include "Kizuri/Assets/LightmapBaker.h"
 #include "Kizuri/Assets/MeshImporter.h"
 #include "Kizuri/Assets/AssetDatabase.h"
