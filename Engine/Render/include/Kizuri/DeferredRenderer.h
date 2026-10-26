@@ -290,6 +290,12 @@ public:
   int FogVolumeCount() const { return fogVolCount; }
   void TakeShaderErrors(std::vector<std::string>& out);
   void SetGrade(float exposure, bool aces);
+  float Exposure() const { return exposure; }
+  bool AcesEnabled() const { return acesOn; }
+  int ToneMappingMode() const { return toneMode; }
+  float BloomStrength() const { return bloomStrength; }
+  float GradeContrast() const { return gradeContrast; }
+  float GradeSaturation() const { return gradeSaturation; }
   void SetTaa(bool on);
   void SetTaaSharpening(float strength);
   void InvalidateTaa();

@@ -3285,6 +3285,90 @@ bool TestGameWorldMainCamera() {
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+bool TestGameWorldPostVolumes() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = false;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", "", options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId first = scene.CreateEntity("PostA");
+  const Kizuri::EntityId second = scene.CreateEntity("PostB");
+  Kizuri::Entity* firstEntity = scene.Get(first);
+  Kizuri::Entity* secondEntity = scene.Get(second);
+  if (firstEntity == nullptr || secondEntity == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  firstEntity->hasPost = true;
+  firstEntity->post.size[0] = 4.0f;
+  firstEntity->post.size[1] = 4.0f;
+  firstEntity->post.size[2] = 4.0f;
+  firstEntity->post.exposure = 1.7f;
+  firstEntity->post.toneMap = 0;
+  firstEntity->post.contrast = 1.3f;
+  firstEntity->post.saturation = 0.6f;
+  firstEntity->post.bloom = 0.8f;
+  secondEntity->hasPost = true;
+  secondEntity->transform.position[0] = 10.0f;
+  secondEntity->post.size[0] = 4.0f;
+  secondEntity->post.size[1] = 4.0f;
+  secondEntity->post.size[2] = 4.0f;
+  secondEntity->post.exposure = 2.5f;
+  secondEntity->post.toneMap = 2;
+  secondEntity->post.contrast = 0.9f;
+  secondEntity->post.saturation = 1.1f;
+  secondEntity->post.bloom = 0.3f;
+  world.SetCameraPosition(0.0f, 0.0f, 0.0f);
+  world.Render(0.0f);
+  const Kizuri::DeferredRenderer& renderer = world.GetRenderer();
+  bool ok = std::fabs(renderer.Exposure() - 1.7f) < 1e-5f &&
+            renderer.AcesEnabled() &&
+            renderer.ToneMappingMode() == 0 &&
+            std::fabs(renderer.GradeContrast() - 1.3f) < 1e-5f &&
+            std::fabs(renderer.GradeSaturation() - 0.6f) < 1e-5f &&
+            std::fabs(renderer.BloomStrength() - 0.8f) < 1e-5f;
+  world.SetCameraPosition(10.0f, 0.0f, 0.0f);
+  world.Render(0.0f);
+  ok = ok && std::fabs(renderer.Exposure() - 2.5f) < 1e-5f &&
+       !renderer.AcesEnabled() &&
+       renderer.ToneMappingMode() == 2 &&
+       std::fabs(renderer.GradeContrast() - 0.9f) < 1e-5f &&
+       std::fabs(renderer.GradeSaturation() - 1.1f) < 1e-5f &&
+       std::fabs(renderer.BloomStrength() - 0.3f) < 1e-5f;
+  world.SetCameraPosition(0.0f, 0.0f, 0.0f);
+  world.Render(0.0f);
+  ok = ok && std::fabs(renderer.Exposure() - 1.7f) < 1e-5f &&
+       renderer.AcesEnabled() &&
+       renderer.ToneMappingMode() == 0 &&
+       std::fabs(renderer.GradeContrast() - 1.3f) < 1e-5f &&
+       std::fabs(renderer.GradeSaturation() - 0.6f) < 1e-5f &&
+       std::fabs(renderer.BloomStrength() - 0.8f) < 1e-5f;
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestGameWorldFogVolumes() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
   if (rhi == nullptr) {
@@ -11715,6 +11799,7 @@ int main() {
   failures += Check("GameLoopSystemOrder", TestGameLoopSystemOrder());
   failures += Check("GameWorldScene", TestGameWorldScene());
   failures += Check("GameWorldMainCamera", TestGameWorldMainCamera());
+  failures += Check("GameWorldPostVolumes", TestGameWorldPostVolumes());
   failures += Check("GameWorldFogVolumes", TestGameWorldFogVolumes());
   failures += Check("GameMaterialParts", TestGameMaterialParts());
   failures += Check("RigidbodySerialize", TestRigidbodySerialize());

@@ -37,6 +37,32 @@ static void SubmitSceneFog(DeferredRenderer& renderer, const Scene& scene) {
     renderer.AddFogVolume(bmin, bmax, e->fog.density, e->fog.color);
   }
 }
+static void SubmitScenePost(DeferredRenderer& renderer, const Scene& scene, const float camPos[3]) {
+  const PostData* active = nullptr;
+  const std::vector<EntityId> ids = scene.All();
+  for (size_t i = 0; i < ids.size(); ++i) {
+    const Entity* e = scene.Get(ids[i]);
+    if (e == nullptr || !e->hasPost) {
+      continue;
+    }
+    const float hx = e->post.size[0] * 0.5f;
+    const float hy = e->post.size[1] * 0.5f;
+    const float hz = e->post.size[2] * 0.5f;
+    if (std::fabs(camPos[0] - e->transform.position[0]) <= hx &&
+        std::fabs(camPos[1] - e->transform.position[1]) <= hy &&
+        std::fabs(camPos[2] - e->transform.position[2]) <= hz) {
+      active = &e->post;
+      break;
+    }
+  }
+  if (active == nullptr) {
+    return;
+  }
+  renderer.SetGrade(active->exposure, active->toneMap == 0);
+  renderer.SetToneMapping(active->toneMap);
+  renderer.SetGrading(active->contrast, active->saturation, 0.0f, 0.0f);
+  renderer.SetBloom(active->bloom);
+}
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight) {
   renderer.ClearLights();
   bool any = false;
@@ -517,6 +543,7 @@ void GameWorld::Render(float alpha) {
   mainCam.farZ = camera.farZ;
   renderer.SetMainCamera(mainCam);
   SubmitSceneFog(renderer, scene);
+  SubmitScenePost(renderer, scene, camPos);
   renderer.BeginObjects(view, proj);
   SubmitSceneLights(renderer, scene, EntityId::Invalid());
   const std::vector<EntityId> ids = scene.All();
