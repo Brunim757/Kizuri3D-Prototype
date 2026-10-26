@@ -3285,6 +3285,110 @@ bool TestGameWorldMainCamera() {
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+bool TestGameWorldLods() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = false;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", "", options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::MeshAssetData nearMesh;
+  nearMesh.positions = { -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f, -0.5f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 0.5f, 1.0f, 0.0f };
+  nearMesh.normals = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  nearMesh.uvs = { 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f };
+  nearMesh.tangents = { 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  nearMesh.indices = { 0, 1, 2, 3, 4, 5 };
+  nearMesh.materials.resize(2);
+  nearMesh.materials[0].albedo[0] = 1.0f;
+  nearMesh.materials[1].albedo[1] = 1.0f;
+  Kizuri::MeshPartData nearPartA;
+  nearPartA.indexOffset = 0;
+  nearPartA.indexCount = 3;
+  nearPartA.material = 0;
+  nearMesh.parts.push_back(nearPartA);
+  Kizuri::MeshPartData nearPartB;
+  nearPartB.indexOffset = 3;
+  nearPartB.indexCount = 3;
+  nearPartB.material = 1;
+  nearMesh.parts.push_back(nearPartB);
+  nearMesh.aabbMin[0] = -1.0f;
+  nearMesh.aabbMin[1] = -1.0f;
+  nearMesh.aabbMin[2] = 0.0f;
+  nearMesh.aabbMax[0] = 1.0f;
+  nearMesh.aabbMax[1] = 1.0f;
+  nearMesh.aabbMax[2] = 0.0f;
+  Kizuri::MeshAssetData farMesh;
+  farMesh.positions = { -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f };
+  farMesh.normals = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  farMesh.uvs = { 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f };
+  farMesh.tangents = { 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  farMesh.indices = { 0, 1, 2 };
+  farMesh.materials.resize(1);
+  farMesh.materials[0].albedo[1] = 1.0f;
+  Kizuri::MeshPartData farPart;
+  farPart.indexOffset = 0;
+  farPart.indexCount = 3;
+  farPart.material = 0;
+  farMesh.parts.push_back(farPart);
+  farMesh.aabbMin[0] = -1.0f;
+  farMesh.aabbMin[1] = -1.0f;
+  farMesh.aabbMin[2] = 0.0f;
+  farMesh.aabbMax[0] = 1.0f;
+  farMesh.aabbMax[1] = 1.0f;
+  farMesh.aabbMax[2] = 0.0f;
+  world.GetAssets().UpsertBatchMesh("batch://runtime_lod_near", nearMesh);
+  world.GetAssets().UpsertBatchMesh("batch://runtime_lod_far", farMesh);
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId id = scene.CreateEntity("Lod");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (entity == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  entity->hasMesh = true;
+  entity->meshGuid = "batch://runtime_lod_near";
+  entity->hasLod = true;
+  entity->lod.farGuid = "batch://runtime_lod_far";
+  entity->lod.nearDist = 5.0f;
+  entity->lod.farDist = 10.0f;
+  world.SetCameraYawPitch(0.0f, 0.0f);
+  world.SetCameraPosition(0.0f, 0.0f, -2.0f);
+  world.Render(0.0f);
+  const Kizuri::RenderStats& stats = world.GetRenderer().GetStats();
+  bool ok = stats.geometryDraws == 2 && stats.geometryTris == 2;
+  world.SetCameraPosition(0.0f, 0.0f, -20.0f);
+  world.Render(0.0f);
+  ok = ok && stats.geometryDraws == 1 && stats.geometryTris == 1;
+  world.SetCameraPosition(0.0f, 0.0f, -7.5f);
+  world.Render(0.0f);
+  ok = ok && stats.geometryDraws == 3 && stats.geometryTris == 3;
+  world.SetCameraPosition(0.0f, 0.0f, -5.0f);
+  world.Render(0.0f);
+  ok = ok && stats.geometryDraws == 2 && stats.geometryTris == 2;
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestGameWorldDecals() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
   if (rhi == nullptr) {
@@ -11882,6 +11986,7 @@ int main() {
   failures += Check("GameLoopSystemOrder", TestGameLoopSystemOrder());
   failures += Check("GameWorldScene", TestGameWorldScene());
   failures += Check("GameWorldMainCamera", TestGameWorldMainCamera());
+  failures += Check("GameWorldLods", TestGameWorldLods());
   failures += Check("GameWorldDecals", TestGameWorldDecals());
   failures += Check("GameWorldPostVolumes", TestGameWorldPostVolumes());
   failures += Check("GameWorldFogVolumes", TestGameWorldFogVolumes());

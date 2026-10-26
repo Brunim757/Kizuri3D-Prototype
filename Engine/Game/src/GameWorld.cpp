@@ -63,6 +63,83 @@ static void SubmitScenePost(DeferredRenderer& renderer, const Scene& scene, cons
   renderer.SetGrading(active->contrast, active->saturation, 0.0f, 0.0f);
   renderer.SetBloom(active->bloom);
 }
+static void SelectLodGuids(AssetDatabase& assets, const DeferredRenderer& renderer, const Entity& entity, const float camPos[3], std::string guids[2], float fades[2], int& count) {
+  guids[0] = entity.meshGuid;
+  guids[1].clear();
+  fades[0] = 0.0f;
+  fades[1] = 0.0f;
+  count = 1;
+  if (!entity.hasLod || entity.meshGuid.empty()) {
+    return;
+  }
+  const MeshRecord* base = assets.GetByGuid(entity.meshGuid);
+  if (base == nullptr) {
+    return;
+  }
+  const float dx = entity.transform.position[0] - camPos[0];
+  const float dy = entity.transform.position[1] - camPos[1];
+  const float dz = entity.transform.position[2] - camPos[2];
+  const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+  if (entity.lod.farGuid.empty() && entity.lod.farDist > entity.lod.nearDist) {
+    int tierA = 0;
+    int tierB = -1;
+    float fadeB = 0.0f;
+    const float rx = base->data.aabbMax[0] - base->data.aabbMin[0];
+    const float ry = base->data.aabbMax[1] - base->data.aabbMin[1];
+    const float rz = base->data.aabbMax[2] - base->data.aabbMin[2];
+    const float radius = 0.5f * std::sqrt(rx * rx + ry * ry + rz * rz);
+    if (radius > 0.001f && renderer.MainFovY() > 0.001f && renderer.RenderHeight() > 0) {
+      SelectAutoLodCoverage(distance, radius, static_cast<float>(renderer.RenderHeight()), renderer.MainFovY(), tierA, tierB, fadeB);
+    } else {
+      SelectAutoLod(distance, entity.lod.nearDist, entity.lod.farDist, tierA, tierB, fadeB);
+    }
+    std::string tierGuids[3];
+    tierGuids[0] = entity.meshGuid;
+    for (int tier = 1; tier <= 2; ++tier) {
+      const std::string siblingPath = LodSiblingPath(base->meshPath, tier);
+      if (siblingPath.empty()) {
+        continue;
+      }
+      const MeshRecord* sibling = assets.GetByMeshPath(siblingPath);
+      if (sibling != nullptr) {
+        tierGuids[tier] = sibling->guid;
+      }
+    }
+    std::string nearGuid = entity.meshGuid;
+    for (int tier = tierA; tier >= 0; --tier) {
+      if (!tierGuids[tier].empty()) {
+        nearGuid = tierGuids[tier];
+        break;
+      }
+    }
+    guids[0] = nearGuid;
+    if (tierB >= 0) {
+      std::string farGuid = entity.meshGuid;
+      for (int tier = tierB; tier >= 0; --tier) {
+        if (!tierGuids[tier].empty()) {
+          farGuid = tierGuids[tier];
+          break;
+        }
+      }
+      guids[1] = farGuid;
+      fades[0] = 1.0f - fadeB;
+      fades[1] = fadeB;
+      count = 2;
+    }
+    return;
+  }
+  if (!entity.lod.farGuid.empty() && entity.lod.farGuid != entity.meshGuid && entity.lod.farDist > entity.lod.nearDist) {
+    const float blend = (distance - entity.lod.nearDist) / (entity.lod.farDist - entity.lod.nearDist);
+    if (blend >= 1.0f) {
+      guids[0] = entity.lod.farGuid;
+    } else if (blend > 0.0f) {
+      guids[1] = entity.lod.farGuid;
+      fades[0] = 1.0f - blend;
+      fades[1] = blend;
+      count = 2;
+    }
+  }
+}
 void GameWorld::SubmitDecals(const std::vector<EntityId>& ids, float dt) {
   std::string decalKey;
   std::vector<const TextureAssetData*> decalTextures;
@@ -649,34 +726,40 @@ void GameWorld::Render(float alpha) {
     if (e == nullptr || !e->hasMesh || e->meshGuid.empty()) {
       continue;
     }
-    const MeshRecord* rec = assets.GetByGuid(e->meshGuid);
-    if (rec == nullptr || !rec->loaded) {
-      continue;
-    }
-    if (rec->gpuVB == 0) {
-      assets.EnsureMeshGpu(e->meshGuid, 64u * 1024u * 1024u);
-      rec = assets.GetByGuid(e->meshGuid);
-      if (rec == nullptr || rec->gpuVB == 0) {
-        continue;
-      }
-    }
     ComposeMatrix(e->transform, world);
-    if (rec->data.parts.empty()) {
-      DeferredMaterial material;
-      const DeferredMaterial* useMat = FillDeferredForMesh(assets, *e, rec->data, material) ? &material : nullptr;
-      UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
-      renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, useMat, 0.0f, rec->data.aabbMin, rec->data.aabbMax);
-      continue;
-    }
-    for (size_t p = 0; p < rec->data.parts.size(); ++p) {
-      const MeshPartData& part = rec->data.parts[p];
-      if (part.indexCount == 0 || static_cast<size_t>(part.indexOffset) + static_cast<size_t>(part.indexCount) > rec->data.indices.size()) {
+    std::string drawGuids[2];
+    float drawFades[2];
+    int drawCount = 1;
+    SelectLodGuids(assets, renderer, *e, camPos, drawGuids, drawFades, drawCount);
+    for (int li = 0; li < drawCount; ++li) {
+      const MeshRecord* rec = assets.GetByGuid(drawGuids[li]);
+      if (rec == nullptr || !rec->loaded) {
         continue;
       }
-      DeferredMaterial partMat;
-      const DeferredMaterial* useMat = FillDeferredForPart(assets, *e, rec->data, p, partMat) ? &partMat : nullptr;
-      UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
-      renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, 0.0f, rec->data.aabbMin, rec->data.aabbMax);
+      if (rec->gpuVB == 0) {
+        assets.EnsureMeshGpu(drawGuids[li], 64u * 1024u * 1024u);
+        rec = assets.GetByGuid(drawGuids[li]);
+        if (rec == nullptr || rec->gpuVB == 0) {
+          continue;
+        }
+      }
+      if (rec->data.parts.empty()) {
+        DeferredMaterial material;
+        const DeferredMaterial* useMat = FillDeferredForMesh(assets, *e, rec->data, material) ? &material : nullptr;
+        UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
+        renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax);
+        continue;
+      }
+      for (size_t p = 0; p < rec->data.parts.size(); ++p) {
+        const MeshPartData& part = rec->data.parts[p];
+        if (part.indexCount == 0 || static_cast<size_t>(part.indexOffset) + static_cast<size_t>(part.indexCount) > rec->data.indices.size()) {
+          continue;
+        }
+        DeferredMaterial partMat;
+        const DeferredMaterial* useMat = FillDeferredForPart(assets, *e, rec->data, p, partMat) ? &partMat : nullptr;
+        UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
+        renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax);
+      }
     }
   }
   SubmitDecals(ids, lastDelta);
