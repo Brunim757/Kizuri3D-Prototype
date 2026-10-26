@@ -287,6 +287,7 @@ public:
   void MarkProbesRefreshed();
   void ClearFogVolumes();
   void AddFogVolume(const float bmin[3], const float bmax[3], float density, const float color[3]);
+  int FogVolumeCount() const { return fogVolCount; }
   void TakeShaderErrors(std::vector<std::string>& out);
   void SetGrade(float exposure, bool aces);
   void SetTaa(bool on);

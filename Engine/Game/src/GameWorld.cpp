@@ -16,6 +16,27 @@ static void UpdateVirtualTextureForDraw(AssetDatabase& assets, const DeferredMat
   const float dz = world[14] - camPos[2];
   assets.UpdateVirtualTexture(material->vtGuid, std::sqrt(dx * dx + dy * dy + dz * dz));
 }
+static void SubmitSceneFog(DeferredRenderer& renderer, const Scene& scene) {
+  renderer.ClearFogVolumes();
+  const std::vector<EntityId> ids = scene.All();
+  for (size_t i = 0; i < ids.size(); ++i) {
+    const Entity* e = scene.Get(ids[i]);
+    if (e == nullptr || !e->hasFog) {
+      continue;
+    }
+    float bmin[3] = {
+      e->transform.position[0] - e->fog.size[0] * 0.5f,
+      e->transform.position[1] - e->fog.size[1] * 0.5f,
+      e->transform.position[2] - e->fog.size[2] * 0.5f
+    };
+    float bmax[3] = {
+      e->transform.position[0] + e->fog.size[0] * 0.5f,
+      e->transform.position[1] + e->fog.size[1] * 0.5f,
+      e->transform.position[2] + e->fog.size[2] * 0.5f
+    };
+    renderer.AddFogVolume(bmin, bmax, e->fog.density, e->fog.color);
+  }
+}
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight) {
   renderer.ClearLights();
   bool any = false;
@@ -495,6 +516,7 @@ void GameWorld::Render(float alpha) {
   mainCam.nearZ = camera.nearZ;
   mainCam.farZ = camera.farZ;
   renderer.SetMainCamera(mainCam);
+  SubmitSceneFog(renderer, scene);
   renderer.BeginObjects(view, proj);
   SubmitSceneLights(renderer, scene, EntityId::Invalid());
   const std::vector<EntityId> ids = scene.All();

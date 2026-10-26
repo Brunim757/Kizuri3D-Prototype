@@ -3285,6 +3285,68 @@ bool TestGameWorldMainCamera() {
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+bool TestGameWorldFogVolumes() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = false;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", "", options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId first = scene.CreateEntity("FogA");
+  const Kizuri::EntityId second = scene.CreateEntity("FogB");
+  Kizuri::Entity* firstEntity = scene.Get(first);
+  Kizuri::Entity* secondEntity = scene.Get(second);
+  if (firstEntity == nullptr || secondEntity == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  firstEntity->hasFog = true;
+  firstEntity->transform.position[0] = 2.0f;
+  firstEntity->transform.position[1] = 3.0f;
+  firstEntity->transform.position[2] = 4.0f;
+  firstEntity->fog.size[0] = 4.0f;
+  firstEntity->fog.size[1] = 2.0f;
+  firstEntity->fog.size[2] = 6.0f;
+  firstEntity->fog.density = 0.25f;
+  secondEntity->hasFog = true;
+  secondEntity->transform.position[0] = -5.0f;
+  secondEntity->fog.size[0] = 2.0f;
+  secondEntity->fog.size[1] = 2.0f;
+  secondEntity->fog.size[2] = 2.0f;
+  secondEntity->fog.density = 0.5f;
+  world.Render(0.0f);
+  bool ok = world.GetRenderer().FogVolumeCount() == 2;
+  firstEntity->hasFog = false;
+  world.Render(0.0f);
+  ok = ok && world.GetRenderer().FogVolumeCount() == 1;
+  scene.DeleteEntity(second);
+  world.Render(0.0f);
+  ok = ok && world.GetRenderer().FogVolumeCount() == 0;
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestGameMaterialParts() {
   Kizuri::AssetDatabase assets;
   Kizuri::MeshAssetData mesh;
@@ -11653,6 +11715,7 @@ int main() {
   failures += Check("GameLoopSystemOrder", TestGameLoopSystemOrder());
   failures += Check("GameWorldScene", TestGameWorldScene());
   failures += Check("GameWorldMainCamera", TestGameWorldMainCamera());
+  failures += Check("GameWorldFogVolumes", TestGameWorldFogVolumes());
   failures += Check("GameMaterialParts", TestGameMaterialParts());
   failures += Check("RigidbodySerialize", TestRigidbodySerialize());
   failures += Check("Ragdoll", TestRagdoll());
