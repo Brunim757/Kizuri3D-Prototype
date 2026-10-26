@@ -3589,8 +3589,10 @@ bool TestGameWorldSpotCookies() {
     world.GetAssets().DrainUploads(rhi, 16u * 1024u * 1024u);
     const Kizuri::TextureRecord* texture = world.GetAssets().GetTexByGuid(texGuid);
     ok = texture != nullptr && texture->loaded && texture->gpu != 0;
+    std::printf("COOKIE texture guid=%s loaded=%d gpu=%llu\n", texGuid.c_str(), texture != nullptr && texture->loaded ? 1 : 0, texture != nullptr ? static_cast<unsigned long long>(texture->gpu) : 0ull);
   }
   if (!ok) {
+    std::printf("COOKIE texture setup failed\n");
     world.Shutdown();
     rhi->Shutdown();
     Kizuri::DestroyRHI(rhi);
@@ -3616,10 +3618,12 @@ bool TestGameWorldSpotCookies() {
   world.SetCameraYawPitch(0.0f, 0.0f);
   world.Render(0.0f);
   const Kizuri::DeferredRenderer& renderer = world.GetRenderer();
+  std::printf("COOKIE missing enabled=%d tex=%llu\n", renderer.SpotCookieArrayEnabled() ? 1 : 0, static_cast<unsigned long long>(renderer.CookieArrayTexture()));
   ok = !renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() == 0;
   spot->light.cookieGuid = texGuid;
   world.Render(0.0f);
   const Kizuri::RHITexture firstArray = renderer.CookieArrayTexture();
+  std::printf("COOKIE loaded enabled=%d tex=%llu\n", renderer.SpotCookieArrayEnabled() ? 1 : 0, static_cast<unsigned long long>(firstArray));
   ok = ok && renderer.SpotCookieArrayEnabled() && firstArray != 0;
   const Kizuri::EntityId pointId = scene.CreateEntity("Point");
   Kizuri::Entity* point = scene.Get(pointId);
@@ -3634,18 +3638,23 @@ bool TestGameWorldSpotCookies() {
   point->transform.position[1] = 3.0f;
   world.Render(0.0f);
   const Kizuri::RHITexture shiftedArray = renderer.CookieArrayTexture();
+  std::printf("COOKIE point enabled=%d tex=%llu first=%llu\n", renderer.SpotCookieArrayEnabled() ? 1 : 0, static_cast<unsigned long long>(shiftedArray), static_cast<unsigned long long>(firstArray));
   ok = ok && renderer.SpotCookieArrayEnabled() && shiftedArray != 0 && shiftedArray != firstArray;
   spot->light.cookieGuid.clear();
   world.Render(0.0f);
+  std::printf("COOKIE cleared enabled=%d tex=%llu\n", renderer.SpotCookieArrayEnabled() ? 1 : 0, static_cast<unsigned long long>(renderer.CookieArrayTexture()));
   ok = ok && !renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() == 0;
   spot->light.cookieGuid = texGuid;
   world.Render(0.0f);
+  std::printf("COOKIE reassigned enabled=%d tex=%llu\n", renderer.SpotCookieArrayEnabled() ? 1 : 0, static_cast<unsigned long long>(renderer.CookieArrayTexture()));
   ok = ok && renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() != 0;
   scene.DeleteEntity(spotId);
   world.Render(0.0f);
+  std::printf("COOKIE spot deleted enabled=%d tex=%llu\n", renderer.SpotCookieArrayEnabled() ? 1 : 0, static_cast<unsigned long long>(renderer.CookieArrayTexture()));
   ok = ok && !renderer.SpotCookieArrayEnabled() && renderer.CookieArrayTexture() == 0;
   scene.DeleteEntity(pointId);
   world.Render(0.0f);
+  std::printf("COOKIE point deleted enabled=%d tex=%llu ok=%d\n", renderer.SpotCookieArrayEnabled() ? 1 : 0, static_cast<unsigned long long>(renderer.CookieArrayTexture()), ok ? 1 : 0);
   ok = ok && !renderer.SpotCookieArrayEnabled();
   world.Shutdown();
   rhi->Shutdown();
