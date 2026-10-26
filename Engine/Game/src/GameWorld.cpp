@@ -7,6 +7,15 @@
 #include <unordered_map>
 #include <vector>
 namespace Kizuri {
+static void UpdateVirtualTextureForDraw(AssetDatabase& assets, const DeferredMaterial* material, const float world[16], const float camPos[3]) {
+  if (material == nullptr || material->vtGuid.empty()) {
+    return;
+  }
+  const float dx = world[12] - camPos[0];
+  const float dy = world[13] - camPos[1];
+  const float dz = world[14] - camPos[2];
+  assets.UpdateVirtualTexture(material->vtGuid, std::sqrt(dx * dx + dy * dy + dz * dz));
+}
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight) {
   renderer.ClearLights();
   bool any = false;
@@ -490,7 +499,6 @@ void GameWorld::Render(float alpha) {
   SubmitSceneLights(renderer, scene, EntityId::Invalid());
   const std::vector<EntityId> ids = scene.All();
   float world[16];
-  DeferredMaterial material;
   for (size_t i = 0; i < ids.size(); ++i) {
     const Entity* e = scene.Get(ids[i]);
     if (e == nullptr || !e->hasMesh || e->meshGuid.empty()) {
@@ -508,8 +516,23 @@ void GameWorld::Render(float alpha) {
       }
     }
     ComposeMatrix(e->transform, world);
-    FillDeferredFromEntity(assets, e->material, material);
-    renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, &material, 0.0f, rec->data.aabbMin, rec->data.aabbMax);
+    if (rec->data.parts.empty()) {
+      DeferredMaterial material;
+      const DeferredMaterial* useMat = FillDeferredForMesh(assets, *e, rec->data, material) ? &material : nullptr;
+      UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
+      renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, useMat, 0.0f, rec->data.aabbMin, rec->data.aabbMax);
+      continue;
+    }
+    for (size_t p = 0; p < rec->data.parts.size(); ++p) {
+      const MeshPartData& part = rec->data.parts[p];
+      if (part.indexCount == 0 || static_cast<size_t>(part.indexOffset) + static_cast<size_t>(part.indexCount) > rec->data.indices.size()) {
+        continue;
+      }
+      DeferredMaterial partMat;
+      const DeferredMaterial* useMat = FillDeferredForPart(assets, *e, rec->data, p, partMat) ? &partMat : nullptr;
+      UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
+      renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, 0.0f, rec->data.aabbMin, rec->data.aabbMax);
+    }
   }
   renderer.EndObjectsToBackbuffer(camPos);
 }

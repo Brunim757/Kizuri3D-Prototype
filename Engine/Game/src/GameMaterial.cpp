@@ -233,4 +233,64 @@ void FillDeferredFromMesh(AssetDatabase& assets, const MeshMaterialData& mm, Def
   }
   partMat.texFlags = flags;
 }
+static void ApplyEntityLightmap(AssetDatabase& assets, const Entity& entity, DeferredMaterial& out) {
+  if (!entity.hasLightmap || entity.lightmap.texGuid.empty()) {
+    return;
+  }
+  RHITexture lightmapTex = 0;
+  if (ResolveMaterialSlot(assets, entity.lightmap.texGuid, 16u, lightmapTex) != 0) {
+    out.lightmapTex = lightmapTex;
+    out.lightmapIntensity = entity.lightmap.intensity;
+    out.texFlags |= 16u;
+  }
+}
+bool FillDeferredForMesh(AssetDatabase& assets, const Entity& entity, const MeshAssetData& mesh, DeferredMaterial& out) {
+  out = DeferredMaterial();
+  if (entity.hasMaterial) {
+    FillDeferredFromEntity(assets, entity.material, out);
+    ApplyEntityLightmap(assets, entity, out);
+    return true;
+  }
+  if (!mesh.materials.empty()) {
+    FillDeferredFromMesh(assets, mesh.materials[0], out);
+    ApplyEntityLightmap(assets, entity, out);
+    return true;
+  }
+  return false;
+}
+bool FillDeferredForPart(AssetDatabase& assets, const Entity& entity, const MeshAssetData& mesh, size_t partIndex, DeferredMaterial& out) {
+  out = DeferredMaterial();
+  if (partIndex >= mesh.parts.size()) {
+    return false;
+  }
+  const MeshPartData& part = mesh.parts[partIndex];
+  for (size_t k = 0; k < entity.partMaterials.size(); ++k) {
+    if (entity.partMaterials[k].part == static_cast<uint32_t>(partIndex)) {
+      FillDeferredFromEntity(assets, entity.partMaterials[k].material, out);
+      ApplyEntityLightmap(assets, entity, out);
+      return true;
+    }
+  }
+  if (entity.hasMaterial) {
+    FillDeferredFromEntity(assets, entity.material, out);
+    ApplyEntityLightmap(assets, entity, out);
+    return true;
+  }
+  if (part.material >= mesh.materials.size()) {
+    return false;
+  }
+  uint32_t materialIndex = part.material;
+  if (entity.variantIndex >= 0) {
+    for (size_t i = 0; i < mesh.variantAssigns.size(); ++i) {
+      const MeshVariantAssign& assign = mesh.variantAssigns[i];
+      if (assign.part == static_cast<uint32_t>(partIndex) && static_cast<int>(assign.variant) == entity.variantIndex && assign.material < mesh.materials.size()) {
+        materialIndex = assign.material;
+        break;
+      }
+    }
+  }
+  FillDeferredFromMesh(assets, mesh.materials[materialIndex], out);
+  ApplyEntityLightmap(assets, entity, out);
+  return true;
+}
 }

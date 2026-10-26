@@ -3211,6 +3211,25 @@ bool TestGameWorldMainCamera() {
   mesh.uvs = { 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f };
   mesh.tangents = { 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f };
   mesh.indices = { 0, 1, 2, 3, 4, 5 };
+  mesh.materials.resize(2);
+  mesh.materials[0].albedo[0] = 1.0f;
+  mesh.materials[0].albedo[1] = 0.0f;
+  mesh.materials[0].albedo[2] = 0.0f;
+  mesh.materials[0].roughness = 0.4f;
+  mesh.materials[1].albedo[0] = 0.0f;
+  mesh.materials[1].albedo[1] = 1.0f;
+  mesh.materials[1].albedo[2] = 0.0f;
+  mesh.materials[1].roughness = 0.7f;
+  Kizuri::MeshPartData partA;
+  partA.indexOffset = 0;
+  partA.indexCount = 3;
+  partA.material = 0;
+  mesh.parts.push_back(partA);
+  Kizuri::MeshPartData partB;
+  partB.indexOffset = 3;
+  partB.indexCount = 3;
+  partB.material = 1;
+  mesh.parts.push_back(partB);
   mesh.aabbMin[0] = -1.0f;
   mesh.aabbMin[1] = 1.0f;
   mesh.aabbMin[2] = -1.0f;
@@ -3258,11 +3277,86 @@ bool TestGameWorldMainCamera() {
                   std::fabs(upLen - 1.0f) < 1e-4f &&
                   std::fabs(fwdRight) < 1e-4f &&
                   std::fabs(fwdUp) < 1e-4f &&
-                  stats.geometryDraws == 1 &&
+                  stats.geometryDraws == 2 &&
                   stats.geometryTris == 2;
   world.Shutdown();
   rhi->Shutdown();
   Kizuri::DestroyRHI(rhi);
+  return ok;
+}
+bool TestGameMaterialParts() {
+  Kizuri::AssetDatabase assets;
+  Kizuri::MeshAssetData mesh;
+  mesh.materials.resize(2);
+  mesh.materials[0].albedo[0] = 1.0f;
+  mesh.materials[0].albedo[1] = 0.0f;
+  mesh.materials[0].albedo[2] = 0.0f;
+  mesh.materials[1].albedo[0] = 0.0f;
+  mesh.materials[1].albedo[1] = 1.0f;
+  mesh.materials[1].albedo[2] = 0.0f;
+  Kizuri::MeshPartData partA;
+  partA.indexOffset = 0;
+  partA.indexCount = 3;
+  partA.material = 0;
+  mesh.parts.push_back(partA);
+  Kizuri::MeshPartData partB;
+  partB.indexOffset = 3;
+  partB.indexCount = 3;
+  partB.material = 1;
+  mesh.parts.push_back(partB);
+  Kizuri::MeshVariantAssign variant;
+  variant.part = 0;
+  variant.variant = 1;
+  variant.material = 1;
+  mesh.variantAssigns.push_back(variant);
+  Kizuri::Entity entity;
+  entity.hasMaterial = false;
+  entity.hasLightmap = false;
+  Kizuri::DeferredMaterial out;
+  bool ok = Kizuri::FillDeferredForPart(assets, entity, mesh, 0, out) &&
+            std::fabs(out.albedo[0] - 1.0f) < 1e-6f &&
+            std::fabs(out.albedo[1]) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, entity, mesh, 1, out) &&
+       std::fabs(out.albedo[0]) < 1e-6f &&
+       std::fabs(out.albedo[1] - 1.0f) < 1e-6f;
+  ok = ok && !Kizuri::FillDeferredForPart(assets, entity, mesh, 2, out);
+  entity.hasMaterial = true;
+  Kizuri::MakeDefaultMaterial(entity.material);
+  entity.material.albedo[0] = 0.0f;
+  entity.material.albedo[1] = 0.0f;
+  entity.material.albedo[2] = 1.0f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, entity, mesh, 0, out) &&
+       std::fabs(out.albedo[2] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, entity, mesh, 1, out) &&
+       std::fabs(out.albedo[2] - 1.0f) < 1e-6f;
+  Kizuri::PartMaterial overrideMaterial;
+  overrideMaterial.part = 1;
+  Kizuri::MakeDefaultMaterial(overrideMaterial.material);
+  overrideMaterial.material.albedo[0] = 1.0f;
+  overrideMaterial.material.albedo[1] = 1.0f;
+  overrideMaterial.material.albedo[2] = 0.0f;
+  entity.partMaterials.push_back(overrideMaterial);
+  ok = ok && Kizuri::FillDeferredForPart(assets, entity, mesh, 0, out) &&
+       std::fabs(out.albedo[2] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, entity, mesh, 1, out) &&
+       std::fabs(out.albedo[0] - 1.0f) < 1e-6f &&
+       std::fabs(out.albedo[1] - 1.0f) < 1e-6f &&
+       std::fabs(out.albedo[2]) < 1e-6f;
+  entity.partMaterials.clear();
+  entity.hasMaterial = false;
+  entity.variantIndex = 1;
+  ok = ok && Kizuri::FillDeferredForPart(assets, entity, mesh, 0, out) &&
+       std::fabs(out.albedo[0]) < 1e-6f &&
+       std::fabs(out.albedo[1] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, entity, mesh, 1, out) &&
+       std::fabs(out.albedo[1] - 1.0f) < 1e-6f;
+  Kizuri::DeferredMaterial whole;
+  ok = ok && Kizuri::FillDeferredForMesh(assets, entity, mesh, whole) &&
+       std::fabs(whole.albedo[0] - 1.0f) < 1e-6f &&
+       std::fabs(whole.albedo[1]) < 1e-6f;
+  entity.hasMaterial = true;
+  ok = ok && Kizuri::FillDeferredForMesh(assets, entity, mesh, whole) &&
+       std::fabs(whole.albedo[2] - 1.0f) < 1e-6f;
   return ok;
 }
 bool TestPhysicsFall() {
@@ -11558,6 +11652,7 @@ int main() {
   failures += Check("GameLoopSystemOrder", TestGameLoopSystemOrder());
   failures += Check("GameWorldScene", TestGameWorldScene());
   failures += Check("GameWorldMainCamera", TestGameWorldMainCamera());
+  failures += Check("GameMaterialParts", TestGameMaterialParts());
   failures += Check("RigidbodySerialize", TestRigidbodySerialize());
   failures += Check("Ragdoll", TestRagdoll());
   failures += Check("LodCoverage", TestLodCoverage());

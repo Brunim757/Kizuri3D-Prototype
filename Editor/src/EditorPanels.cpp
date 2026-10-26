@@ -431,35 +431,10 @@ std::unordered_set<EntityId, EntityIdHash> EditorApp::SubmitStaticBatches(const 
           continue;
         }
         DeferredMaterial partMat;
-        const DeferredMaterial* useMat = nullptr;
-        const MaterialData* pm = nullptr;
-        for (size_t k = 0; k < e->partMaterials.size(); ++k) {
-          if (e->partMaterials[k].part == static_cast<uint32_t>(p)) {
-            pm = &e->partMaterials[k].material;
-            break;
-          }
+        if (!FillDeferredForPart(assets, *e, rec->data, p, partMat)) {
+          continue;
         }
-        if (pm != nullptr) {
-          FillDeferredFromEntity(assets, *pm, partMat);
-          useMat = &partMat;
-        } else if (e->hasMaterial) {
-          FillDeferredFromEntity(assets, e->material, partMat);
-          useMat = &partMat;
-        } else if (part.material < rec->data.materials.size()) {
-          uint32_t matIdx = part.material;
-          if (e->variantIndex >= 0) {
-            for (size_t vi = 0; vi < rec->data.variantAssigns.size(); ++vi) {
-              const MeshVariantAssign& va = rec->data.variantAssigns[vi];
-              if (va.part == static_cast<uint32_t>(p) && static_cast<int>(va.variant) == e->variantIndex && va.material < rec->data.materials.size()) {
-                matIdx = va.material;
-                break;
-              }
-            }
-          }
-          FillDeferredFromMesh(assets, rec->data.materials[matIdx], partMat);
-          useMat = &partMat;
-        }
-        if (useMat == nullptr || useMat->transmission > 0.0f || useMat->alphaMode == 2) {
+        if (partMat.transmission > 0.0f || partMat.alphaMode == 2) {
           continue;
         }
         Entry en;
@@ -468,7 +443,7 @@ std::unordered_set<EntityId, EntityIdHash> EditorApp::SubmitStaticBatches(const 
         en.data = &rec->data;
         en.off = part.indexOffset;
         en.count = part.indexCount;
-        en.mat = *useMat;
+        en.mat = partMat;
         en.sig = StaticMatSig(en.mat);
         keyH = StaticMixHash(keyH, &en.off, sizeof(en.off));
         keyH = StaticMixHash(keyH, &en.count, sizeof(en.count));
@@ -1612,47 +1587,8 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
           } else {
           for (size_t p = 0; p < rec->data.parts.size(); ++p) {
             const MeshPartData& part = rec->data.parts[p];
-            const DeferredMaterial* useMat = nullptr;
             DeferredMaterial partMat;
-            const MaterialData* pm = nullptr;
-            for (size_t k = 0; k < e->partMaterials.size(); ++k) {
-              if (e->partMaterials[k].part == static_cast<uint32_t>(p)) {
-                pm = &e->partMaterials[k].material;
-                break;
-              }
-            }
-            if (pm != nullptr) {
-              FillDeferredFromEntity(assets, *pm, partMat);
-              useMat = &partMat;
-            } else if (e->hasMaterial) {
-              FillDeferredFromEntity(assets, e->material, partMat);
-              useMat = &partMat;
-            } else {
-              useMat = nullptr;
-            }
-            if (useMat == nullptr && part.material < rec->data.materials.size()) {
-              uint32_t matIdx = part.material;
-              if (e->variantIndex >= 0) {
-                for (size_t vi = 0; vi < rec->data.variantAssigns.size(); ++vi) {
-                  const MeshVariantAssign& va = rec->data.variantAssigns[vi];
-                  if (va.part == static_cast<uint32_t>(p) && static_cast<int>(va.variant) == e->variantIndex && va.material < rec->data.materials.size()) {
-                    matIdx = va.material;
-                    break;
-                  }
-                }
-              }
-              const MeshMaterialData& mm = rec->data.materials[matIdx];
-              FillDeferredFromMesh(assets, mm, partMat);
-              useMat = &partMat;
-            }
-            if (e->hasLightmap && !e->lightmap.texGuid.empty() && useMat != nullptr) {
-              RHITexture lmTex = 0;
-              if (ResolveMaterialSlot(assets, e->lightmap.texGuid, 16u, lmTex) != 0) {
-                partMat.lightmapTex = lmTex;
-                partMat.lightmapIntensity = e->lightmap.intensity;
-                partMat.texFlags |= 16u;
-              }
-            }
+            const DeferredMaterial* useMat = FillDeferredForPart(assets, *e, rec->data, p, partMat) ? &partMat : nullptr;
             if (useMat != nullptr && !useMat->vtGuid.empty()) {
               float vdx = world[12] - cpos[0];
               float vdy = world[13] - cpos[1];
