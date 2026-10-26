@@ -380,6 +380,10 @@ void ApplyQualityToRenderer(DeferredRenderer& renderer, const QualitySettings& q
   renderer.SetTaaSharpening(q.taaSharp);
   renderer.SetBloom(q.bloom);
   renderer.SetShadowFilter(q.shadowFilter);
+  renderer.SetShadowRange(q.shadowRange);
+  renderer.SetShadowAutoRes(q.shadowAuto);
+  renderer.SetVsmQuality(q.vsmQuality);
+  renderer.SetFogEnabled(q.fog);
   renderer.SetDynamicResolution(q.dynRes, 16.6f, 0.5f, 1.0f);
   renderer.SetOcclusionCulling(q.occ);
   renderer.SetGodRays(q.godRays, 0.5f, 0.9f, 0.2f);

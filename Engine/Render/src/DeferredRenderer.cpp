@@ -2814,6 +2814,9 @@ void DeferredRenderer::SetFog(bool on, float density, const float color[3]) {
     fogColor[2] = color[2];
   }
 }
+void DeferredRenderer::SetFogEnabled(bool on) {
+  fogOn = on;
+}
 void DeferredRenderer::SetHeightFog(float falloff, float baseHeight) {
   fogHeightFalloff = falloff < 0.0f ? 0.0f : (falloff > 1.0f ? 1.0f : falloff);
   fogBaseHeight = baseHeight;

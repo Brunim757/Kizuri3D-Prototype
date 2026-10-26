@@ -7498,6 +7498,33 @@ bool TestQualityPreset() {
   }
   return true;
 }
+bool TestQualityToRenderer() {
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  Kizuri::QualitySettings low = Kizuri::ApplyQualityPreset(Kizuri::QualityLevel::Low);
+  Kizuri::ApplyQualityToRenderer(renderer, low);
+  bool ok = renderer.FogEnabled() == low.fog && renderer.ShadowRange() == low.shadowRange &&
+            renderer.ShadowAutoResEnabled() == low.shadowAuto && renderer.VsmQuality() == low.vsmQuality;
+  Kizuri::QualitySettings ultra = Kizuri::ApplyQualityPreset(Kizuri::QualityLevel::Ultra);
+  Kizuri::ApplyQualityToRenderer(renderer, ultra);
+  ok = ok && renderer.FogEnabled() == ultra.fog && renderer.ShadowRange() == ultra.shadowRange &&
+       renderer.ShadowAutoResEnabled() == ultra.shadowAuto && renderer.VsmQuality() == ultra.vsmQuality;
+  Kizuri::QualitySettings custom;
+  custom.fog = false;
+  custom.shadowRange = 12.5f;
+  custom.shadowAuto = true;
+  custom.vsmQuality = 2;
+  Kizuri::ApplyQualityToRenderer(renderer, custom);
+  ok = ok && !renderer.FogEnabled() && renderer.ShadowRange() == 12.5f &&
+       renderer.ShadowAutoResEnabled() && renderer.VsmQuality() == 2;
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestPartMaterial() {
   Kizuri::Scene src;
   Kizuri::UndoStack undo;
@@ -12112,6 +12139,7 @@ int main() {
   failures += Check("RectLight", TestRectLight());
   failures += Check("LightFeatures", TestLightFeatures());
   failures += Check("QualityPreset", TestQualityPreset());
+  failures += Check("QualityToRenderer", TestQualityToRenderer());
   failures += Check("MotionStable", TestMotionStable());
   failures += Check("IblBake", TestIblBake());
   failures += Check("TaaHistory", TestTaaHistory());

@@ -329,6 +329,9 @@ public:
   void SetSsgi(bool on);
   void SetFxaa(bool on);
   void SetFog(bool on, float density, const float color[3]);
+  void SetFogEnabled(bool on);
+  bool FogEnabled() const { return fogOn; }
+  float FogDensity() const { return fogDensity; }
   bool Resize(int w, int h);
   void SetViewOffset(float x, float y);
   void Render(const float view[16], const float proj[16], const float camPos[3]);
@@ -376,6 +379,9 @@ public:
   void SetVsmBleed(float bleed);
   void SetEvsmExponent(float c);
   void SetShadowRange(float range);
+  float ShadowRange() const { return shadowRange; }
+  bool ShadowAutoResEnabled() const { return shadowAutoRes; }
+  int VsmQuality() const { return momentsQuality; }
   bool MomentsReady() const;
   void SetNormalBias(float scale);
   void SetAutoBias(bool on);
