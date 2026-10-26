@@ -3309,6 +3309,7 @@ bool TestGameWorldLods() {
     Kizuri::DestroyRHI(rhi);
     return false;
   }
+  world.GetAssets().SetGpuRHI(rhi);
   Kizuri::MeshAssetData nearMesh;
   nearMesh.positions = { -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f, -0.5f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 0.5f, 1.0f, 0.0f };
   nearMesh.normals = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
