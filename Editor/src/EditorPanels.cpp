@@ -1464,7 +1464,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
       renderer.SetCookieArray(arr);
     }
   }
-  SubmitSceneLights(renderer, scene, soloLightId);
+  SubmitSceneLights(renderer, scene, soloLightId, lightIds);
   DeferredMaterial grayMat;
   grayMat.albedo[0] = 0.4f;
   grayMat.albedo[1] = 0.4f;

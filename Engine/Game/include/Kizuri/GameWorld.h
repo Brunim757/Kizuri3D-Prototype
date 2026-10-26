@@ -13,6 +13,7 @@
 #include <vector>
 namespace Kizuri {
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight);
+bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight, const std::vector<EntityId>& ids);
 struct GameWorldOptions {
   bool loadAssets = true;
   bool enablePhysics = true;

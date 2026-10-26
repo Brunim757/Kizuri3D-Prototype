@@ -16,9 +16,8 @@ static void UpdateVirtualTextureForDraw(AssetDatabase& assets, const DeferredMat
   const float dz = world[14] - camPos[2];
   assets.UpdateVirtualTexture(material->vtGuid, std::sqrt(dx * dx + dy * dy + dz * dz));
 }
-static void SubmitSceneFog(DeferredRenderer& renderer, const Scene& scene) {
+static void SubmitSceneFog(DeferredRenderer& renderer, const Scene& scene, const std::vector<EntityId>& ids) {
   renderer.ClearFogVolumes();
-  const std::vector<EntityId> ids = scene.All();
   for (size_t i = 0; i < ids.size(); ++i) {
     const Entity* e = scene.Get(ids[i]);
     if (e == nullptr || !e->hasFog) {
@@ -273,9 +272,11 @@ void GameWorld::SubmitSceneCookies(const std::vector<EntityId>& ids) {
   renderer.SetSpotCookieOn(anyLoaded);
 }
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight) {
+  return SubmitSceneLights(renderer, scene, soloLight, scene.All());
+}
+bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight, const std::vector<EntityId>& ids) {
   renderer.ClearLights();
   bool any = false;
-  const std::vector<EntityId> ids = scene.All();
   for (size_t i = 0; i < ids.size(); ++i) {
     const Entity* e = scene.Get(ids[i]);
     if (e == nullptr || !e->hasLight) {
@@ -773,11 +774,11 @@ void GameWorld::Render(float alpha) {
   mainCam.farZ = camera.farZ;
   renderer.SetMainCamera(mainCam);
   const std::vector<EntityId> ids = scene.All();
-  SubmitSceneFog(renderer, scene);
+  SubmitSceneFog(renderer, scene, ids);
   SubmitScenePost(ids, camPos);
   renderer.BeginObjects(view, proj);
   SubmitSceneCookies(ids);
-  SubmitSceneLights(renderer, scene, EntityId::Invalid());
+  SubmitSceneLights(renderer, scene, EntityId::Invalid(), ids);
   float world[16];
   for (size_t i = 0; i < ids.size(); ++i) {
     const Entity* e = scene.Get(ids[i]);
