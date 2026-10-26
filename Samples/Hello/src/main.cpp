@@ -3285,6 +3285,89 @@ bool TestGameWorldMainCamera() {
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+bool TestGameWorldDecals() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 160;
+  desc.height = 100;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::GameWorld world;
+  Kizuri::GameWorldOptions options;
+  options.loadAssets = false;
+  options.enableAudio = false;
+  options.enablePhysics = false;
+  if (!world.Initialize(rhi, 160, 100, "Shaders", "", options)) {
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  world.GetAssets().SetGpuRHI(rhi);
+  const std::string texGuid = world.GetAssets().CreateProceduralTexture(0, 32, 32);
+  bool ok = !texGuid.empty();
+  if (ok) {
+    world.GetAssets().RequestTexture(texGuid, 0.0f);
+    world.GetAssets().DrainUploads(rhi, 16u * 1024u * 1024u);
+    const Kizuri::TextureRecord* texture = world.GetAssets().GetTexByGuid(texGuid);
+    ok = texture != nullptr && texture->loaded && texture->gpu != 0 &&
+         texture->selectedLevels > 0 && texture->residentLevels >= texture->selectedLevels;
+  }
+  if (!ok) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::Scene& scene = world.GetScene();
+  const Kizuri::EntityId id = scene.CreateEntity("Decal");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (entity == nullptr) {
+    world.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  entity->hasDecal = true;
+  entity->decal.texGuid = texGuid;
+  entity->decal.size[0] = 2.0f;
+  entity->decal.size[1] = 2.0f;
+  entity->decal.size[2] = 2.0f;
+  entity->decal.life = 0.0f;
+  entity->decal.matMask = 1;
+  entity->decal.matRough = 0.4f;
+  entity->decal.matMetal = 0.1f;
+  world.SetCameraPosition(0.0f, 2.0f, -5.0f);
+  world.SetCameraYawPitch(0.0f, 0.0f);
+  world.Render(0.0f);
+  const Kizuri::RenderStats& stats = world.GetRenderer().GetStats();
+  ok = stats.decalDraws == 1;
+  entity->decal.matMask = 0;
+  world.Render(0.0f);
+  ok = ok && stats.decalDraws == 0;
+  entity->decal.matMask = 1;
+  entity->decal.life = 0.5f;
+  world.Update(0.6f);
+  world.Render(0.0f);
+  ok = ok && stats.decalDraws == 0;
+  entity->decal.life = 1.0f;
+  world.Update(0.0f);
+  world.Render(0.0f);
+  ok = ok && stats.decalDraws == 1;
+  world.Update(0.5f);
+  world.Render(0.0f);
+  ok = ok && stats.decalDraws == 0;
+  world.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestGameWorldPostVolumes() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
   if (rhi == nullptr) {
@@ -11799,6 +11882,7 @@ int main() {
   failures += Check("GameLoopSystemOrder", TestGameLoopSystemOrder());
   failures += Check("GameWorldScene", TestGameWorldScene());
   failures += Check("GameWorldMainCamera", TestGameWorldMainCamera());
+  failures += Check("GameWorldDecals", TestGameWorldDecals());
   failures += Check("GameWorldPostVolumes", TestGameWorldPostVolumes());
   failures += Check("GameWorldFogVolumes", TestGameWorldFogVolumes());
   failures += Check("GameMaterialParts", TestGameMaterialParts());

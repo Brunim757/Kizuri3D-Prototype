@@ -10,6 +10,7 @@
 #include "Kizuri/Scene.h"
 #include <string>
 #include <unordered_map>
+#include <vector>
 namespace Kizuri {
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight);
 struct GameWorldOptions {
@@ -76,8 +77,14 @@ private:
   };
   std::unordered_map<EntityId, AudioEntry, EntityIdHash> audioSources;
   std::unordered_map<std::string, uint32_t> audioClipCache;
+  std::unordered_map<EntityId, float, EntityIdHash> decalAge;
+  std::string lastDecalKey;
+  std::vector<std::string> lastDecalGuids;
+  std::vector<float> lastDecalRects;
+  float lastDelta = 0.0f;
   std::string assetsRoot;
   void ClearAudioSources();
+  void SubmitDecals(const std::vector<EntityId>& ids, float dt);
   bool initialized = false;
   int viewWidth = 1280;
   int viewHeight = 720;

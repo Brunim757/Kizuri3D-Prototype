@@ -63,6 +63,92 @@ static void SubmitScenePost(DeferredRenderer& renderer, const Scene& scene, cons
   renderer.SetGrading(active->contrast, active->saturation, 0.0f, 0.0f);
   renderer.SetBloom(active->bloom);
 }
+void GameWorld::SubmitDecals(const std::vector<EntityId>& ids, float dt) {
+  std::string decalKey;
+  std::vector<const TextureAssetData*> decalTextures;
+  lastDecalGuids.clear();
+  for (size_t i = 0; i < ids.size(); ++i) {
+    const Entity* e = scene.Get(ids[i]);
+    if (e == nullptr || !e->hasDecal || e->decal.texGuid.empty()) {
+      continue;
+    }
+    decalKey += e->decal.texGuid + "|";
+    lastDecalGuids.push_back(e->decal.texGuid);
+    const TextureRecord* tr = assets.GetTexByGuid(e->decal.texGuid);
+    if (tr != nullptr) {
+      decalKey += (tr->loaded ? "1|" : "0|");
+    }
+    decalTextures.push_back((tr != nullptr && tr->loaded) ? &tr->data : nullptr);
+    if (decalTextures.size() >= 16) {
+      break;
+    }
+  }
+  if (decalKey != lastDecalKey) {
+    lastDecalKey = decalKey;
+    lastDecalRects.clear();
+    RHITexture atlas = decalTextures.empty() ? 0 : assets.BuildDecalAtlas(decalTextures, lastDecalRects);
+    renderer.SetDecalAtlas(atlas);
+  }
+  for (size_t i = 0; i < ids.size(); ++i) {
+    const Entity* e = scene.Get(ids[i]);
+    if (e == nullptr || !e->hasDecal || e->decal.texGuid.empty()) {
+      continue;
+    }
+    float age = 0.0f;
+    std::unordered_map<EntityId, float, EntityIdHash>::const_iterator ageIt = decalAge.find(e->id);
+    if (ageIt != decalAge.end()) {
+      age = ageIt->second;
+    }
+    age += dt;
+    decalAge[e->id] = age;
+    float fade = 1.0f;
+    if (e->decal.life > 0.0f) {
+      if (age >= e->decal.life) {
+        continue;
+      }
+      fade = 1.0f - age / e->decal.life;
+    }
+    RHITexture decalTex = 0;
+    if (ResolveMaterialSlot(assets, e->decal.texGuid, 1u, decalTex) == 0) {
+      continue;
+    }
+    Transform decalTransform = e->transform;
+    decalTransform.scale[0] *= e->decal.size[0];
+    decalTransform.scale[1] *= e->decal.size[1];
+    decalTransform.scale[2] *= e->decal.size[2];
+    float world[16];
+    ComposeMatrix(decalTransform, world);
+    float invWorld[16];
+    if (!InvertMatrix4(world, invWorld)) {
+      continue;
+    }
+    size_t rectIndex = lastDecalGuids.size();
+    for (size_t g = 0; g < lastDecalGuids.size(); ++g) {
+      if (lastDecalGuids[g] == e->decal.texGuid) {
+        rectIndex = g;
+        break;
+      }
+    }
+    if (rectIndex * 4 + 3 < lastDecalRects.size()) {
+      const float rect[4] = {
+        lastDecalRects[rectIndex * 4 + 0],
+        lastDecalRects[rectIndex * 4 + 1],
+        lastDecalRects[rectIndex * 4 + 2],
+        lastDecalRects[rectIndex * 4 + 3]
+      };
+      renderer.DrawDecalAtlas(world, invWorld, e->decal.size, fade, rect, e->decal.matMask, e->decal.matRough, e->decal.matMetal);
+    } else {
+      renderer.DrawDecal(world, invWorld, e->decal.size, fade, decalTex, e->decal.matMask, e->decal.matRough, e->decal.matMetal);
+    }
+  }
+  for (std::unordered_map<EntityId, float, EntityIdHash>::iterator it = decalAge.begin(); it != decalAge.end();) {
+    if (!scene.Has(it->first)) {
+      it = decalAge.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
 bool SubmitSceneLights(DeferredRenderer& renderer, const Scene& scene, const EntityId& soloLight) {
   renderer.ClearLights();
   bool any = false;
@@ -228,6 +314,11 @@ void GameWorld::Shutdown() {
   initialized = false;
   audioSources.clear();
   audioClipCache.clear();
+  decalAge.clear();
+  lastDecalKey.clear();
+  lastDecalGuids.clear();
+  lastDecalRects.clear();
+  lastDelta = 0.0f;
   assetsRoot.clear();
   audio.Shutdown();
   physics.Shutdown();
@@ -250,6 +341,10 @@ bool GameWorld::LoadSceneFile(const std::string& path) {
   }
   physBodies.clear();
   ClearAudioSources();
+  decalAge.clear();
+  lastDecalKey.clear();
+  lastDecalGuids.clear();
+  lastDecalRects.clear();
   SceneEcsBridge::Import(scene, ecs);
   return true;
 }
@@ -286,6 +381,7 @@ void GameWorld::Update(float dt) {
   if (!initialized) {
     return;
   }
+  lastDelta = dt < 0.0f ? 0.0f : dt;
   ecsSystems.Run(ecs, jobs, dt);
 }
 void GameWorld::SyncPhysics(float dt) {
@@ -583,6 +679,7 @@ void GameWorld::Render(float alpha) {
       renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, 0.0f, rec->data.aabbMin, rec->data.aabbMax);
     }
   }
+  SubmitDecals(ids, lastDelta);
   renderer.EndObjectsToBackbuffer(camPos);
 }
 }
