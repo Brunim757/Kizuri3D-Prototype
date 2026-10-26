@@ -3529,7 +3529,7 @@ bool TestGameWorldPostVolumes() {
   secondEntity->post.bloom = 0.3f;
   world.GetRenderer().SetGrade(1.2f, false);
   world.GetRenderer().SetToneMapping(3);
-  world.GetRenderer().SetGrading(0.8f, 1.4f, 0.0f, 0.0f);
+  world.GetRenderer().SetGrading(0.8f, 1.4f, 0.25f, -0.1f);
   world.GetRenderer().SetBloom(0.7f);
   world.SetCameraPosition(0.0f, 0.0f, 0.0f);
   world.Render(0.0f);
@@ -3539,6 +3539,8 @@ bool TestGameWorldPostVolumes() {
             renderer.ToneMappingMode() == 0 &&
             std::fabs(renderer.GradeContrast() - 1.3f) < 1e-5f &&
             std::fabs(renderer.GradeSaturation() - 0.6f) < 1e-5f &&
+            std::fabs(renderer.GradeTemperature() - 0.25f) < 1e-5f &&
+            std::fabs(renderer.GradeTint() + 0.1f) < 1e-5f &&
             std::fabs(renderer.BloomStrength() - 0.8f) < 1e-5f;
   world.SetCameraPosition(10.0f, 0.0f, 0.0f);
   world.Render(0.0f);
@@ -3563,6 +3565,8 @@ bool TestGameWorldPostVolumes() {
        renderer.ToneMappingMode() == 3 &&
        std::fabs(renderer.GradeContrast() - 0.8f) < 1e-5f &&
        std::fabs(renderer.GradeSaturation() - 1.4f) < 1e-5f &&
+       std::fabs(renderer.GradeTemperature() - 0.25f) < 1e-5f &&
+       std::fabs(renderer.GradeTint() + 0.1f) < 1e-5f &&
        std::fabs(renderer.BloomStrength() - 0.7f) < 1e-5f;
   world.Shutdown();
   Kizuri::GameWorld lowWorld;

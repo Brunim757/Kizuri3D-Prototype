@@ -298,6 +298,8 @@ public:
   float BloomStrength() const { return bloomStrength; }
   float GradeContrast() const { return gradeContrast; }
   float GradeSaturation() const { return gradeSaturation; }
+  float GradeTemperature() const { return gradeTemp; }
+  float GradeTint() const { return gradeTint; }
   void SetTaa(bool on);
   void SetTaaSharpening(float strength);
   void InvalidateTaa();

@@ -87,6 +87,8 @@ private:
   int baseToneMode = 0;
   float baseContrast = 1.0f;
   float baseSaturation = 1.0f;
+  float baseTemp = 0.0f;
+  float baseTint = 0.0f;
   float baseBloom = 0.5f;
   bool postVolumeActive = false;
   float lastDelta = 0.0f;

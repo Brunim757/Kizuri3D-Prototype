@@ -57,7 +57,7 @@ void GameWorld::SubmitScenePost(const std::vector<EntityId>& ids, const float ca
     if (postVolumeActive) {
       renderer.SetGrade(baseExposure, baseToneMode == 0);
       renderer.SetToneMapping(baseToneMode);
-      renderer.SetGrading(baseContrast, baseSaturation, 0.0f, 0.0f);
+      renderer.SetGrading(baseContrast, baseSaturation, baseTemp, baseTint);
       renderer.SetBloom(baseBloom);
       postVolumeActive = false;
     }
@@ -68,12 +68,14 @@ void GameWorld::SubmitScenePost(const std::vector<EntityId>& ids, const float ca
     baseToneMode = renderer.ToneMappingMode();
     baseContrast = renderer.GradeContrast();
     baseSaturation = renderer.GradeSaturation();
+    baseTemp = renderer.GradeTemperature();
+    baseTint = renderer.GradeTint();
     baseBloom = renderer.BloomStrength();
     postVolumeActive = true;
   }
   renderer.SetGrade(active->exposure, active->toneMap == 0);
   renderer.SetToneMapping(active->toneMap);
-  renderer.SetGrading(active->contrast, active->saturation, 0.0f, 0.0f);
+  renderer.SetGrading(active->contrast, active->saturation, baseTemp, baseTint);
   renderer.SetBloom(active->bloom);
 }
 static void SelectLodGuids(AssetDatabase& assets, const DeferredRenderer& renderer, const Entity& entity, const float camPos[3], std::string guids[2], float fades[2], int& count) {
