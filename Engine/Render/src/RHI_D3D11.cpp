@@ -349,6 +349,9 @@ public:
     vsMap.clear();
     psMap.clear();
     buffers.clear();
+    usages.clear();
+    stagingBuf.Reset();
+    stagingCap = 0;
     cbuffers.clear();
     target.Reset();
     context.Reset();
@@ -506,7 +509,7 @@ public:
   }
   RHIBuffer CreateBuffer(uint64_t size, uint32_t stride, bool isIndex, const void* initialData) override {
     std::lock_guard<std::mutex> lock(resMutex);
-    if (size == 0 || size > 256 * 1024 * 1024) {
+    if (size == 0 || size > 0xFFFFFFFFull) {
       return 0;
     }
     D3D11_BUFFER_DESC bd;
@@ -534,11 +537,12 @@ public:
     buffers[id] = buf;
     strides[id] = stride;
     sizes[id] = size;
+    usages[id] = bd.Usage;
     return id;
   }
   RHIBuffer CreateBufferEmpty(uint64_t size, uint32_t stride, bool isIndex) override {
     std::lock_guard<std::mutex> lock(resMutex);
-    if (size == 0 || size > 256 * 1024 * 1024) {
+    if (size == 0 || size > 0xFFFFFFFFull) {
       return 0;
     }
     D3D11_BUFFER_DESC bd;
@@ -556,6 +560,7 @@ public:
     buffers[id] = buf;
     strides[id] = stride;
     sizes[id] = size;
+    usages[id] = bd.Usage;
     return id;
   }
   bool UpdateBufferRange(RHIBuffer buf, uint64_t offset, const void* data, size_t bytes) override {
@@ -565,15 +570,64 @@ public:
       return false;
     }
     auto sz = sizes.find(buf);
-    if (sz == sizes.end() || offset + bytes > sz->second) {
+    if (sz == sizes.end() || offset > sz->second || bytes > sz->second - offset) {
       return false;
+    }
+    auto uit = usages.find(buf);
+    if (uit == usages.end()) {
+      return false;
+    }
+    if (uit->second == D3D11_USAGE_DYNAMIC) {
+      D3D11_MAPPED_SUBRESOURCE mapped;
+      if (FAILED(Ctx()->Map(it->second.Get(), 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mapped))) {
+        return false;
+      }
+      std::memcpy(static_cast<unsigned char*>(mapped.pData) + static_cast<size_t>(offset), data, bytes);
+      Ctx()->Unmap(it->second.Get(), 0);
+      return true;
+    }
+    if (uit->second != D3D11_USAGE_DEFAULT) {
+      return false;
+    }
+    uint64_t need = (static_cast<uint64_t>(bytes) + 15ull) & ~15ull;
+    if (need > 0xFFFFFFFFull) {
+      return false;
+    }
+    if (need > sz->second - offset) {
+      need = bytes;
+    }
+    if (stagingBuf == nullptr || stagingCap < need) {
+      D3D11_BUFFER_DESC sbd;
+      sbd.ByteWidth = static_cast<UINT>(need);
+      sbd.Usage = D3D11_USAGE_STAGING;
+      sbd.BindFlags = 0;
+      sbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+      sbd.MiscFlags = 0;
+      sbd.StructureByteStride = 0;
+      stagingBuf.Reset();
+      if (FAILED(device->CreateBuffer(&sbd, nullptr, stagingBuf.GetAddressOf()))) {
+        stagingCap = 0;
+        return false;
+      }
+      stagingCap = need;
     }
     D3D11_MAPPED_SUBRESOURCE mapped;
-    if (FAILED(Ctx()->Map(it->second.Get(), 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mapped))) {
+    if (FAILED(Ctx()->Map(stagingBuf.Get(), 0, D3D11_MAP_WRITE, 0, &mapped))) {
       return false;
     }
-    std::memcpy(static_cast<unsigned char*>(mapped.pData) + static_cast<size_t>(offset), data, bytes);
-    Ctx()->Unmap(it->second.Get(), 0);
+    std::memcpy(mapped.pData, data, bytes);
+    if (need > bytes) {
+      std::memset(static_cast<unsigned char*>(mapped.pData) + bytes, 0, static_cast<size_t>(need - bytes));
+    }
+    Ctx()->Unmap(stagingBuf.Get(), 0);
+    D3D11_BOX box;
+    box.left = 0;
+    box.top = 0;
+    box.front = 0;
+    box.right = static_cast<UINT>(need);
+    box.bottom = 1;
+    box.back = 1;
+    Ctx()->CopySubresourceRegion(it->second.Get(), 0, static_cast<UINT>(offset), 0, 0, stagingBuf.Get(), 0, &box);
     return true;
   }
   bool UpdateBufferDiscard(RHIBuffer buf, const void* data, size_t bytes) override {
@@ -599,6 +653,7 @@ public:
     buffers.erase(buf);
     strides.erase(buf);
     sizes.erase(buf);
+    usages.erase(buf);
   }
   void SetVertexBuffer(RHIBuffer buf, uint32_t offset) override {
     std::lock_guard<std::mutex> lock(resMutex);
@@ -2512,6 +2567,9 @@ private:
   std::unordered_map<uint64_t, ComPtr<ID3D11Buffer>> buffers;
   std::unordered_map<uint64_t, uint32_t> strides;
   std::unordered_map<uint64_t, uint64_t> sizes;
+  std::unordered_map<uint64_t, D3D11_USAGE> usages;
+  ComPtr<ID3D11Buffer> stagingBuf;
+  uint64_t stagingCap = 0;
   std::unordered_map<uint64_t, ComPtr<ID3D11Buffer>> cbuffers;
   std::unordered_map<uint64_t, uint64_t> csizes;
   std::unordered_map<uint64_t, ComPtr<ID3D11VertexShader>> vsMap;

@@ -804,10 +804,10 @@ void GameWorld::Render(float alpha) {
       if (rec == nullptr || !rec->loaded) {
         continue;
       }
-      if (rec->gpuVB == 0) {
-        assets.EnsureMeshGpu(drawGuids[li], 64u * 1024u * 1024u);
+      if (!rec->gpuReady) {
+        assets.EnsureMeshGpu(drawGuids[li], 8u * 1024u * 1024u);
         rec = assets.GetByGuid(drawGuids[li]);
-        if (rec == nullptr || rec->gpuVB == 0) {
+        if (rec == nullptr || !rec->gpuReady) {
           continue;
         }
       }

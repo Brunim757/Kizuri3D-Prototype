@@ -490,11 +490,8 @@ std::unordered_set<EntityId, EntityIdHash> EditorApp::SubmitStaticBatches(const 
       StaticHex16(bi->first, gb + 8);
       gb[24] = 0;
       assets.UpsertBatchMesh(gb, merged);
-      if (!assets.EnsureMeshGpu(gb, 4194304)) {
-        continue;
-      }
       const MeshRecord* mr = assets.GetByGuid(gb);
-      if (mr == nullptr || !mr->gpuReady) {
+      if (mr == nullptr) {
         continue;
       }
       StaticBucketDraw bd;
@@ -519,8 +516,15 @@ std::unordered_set<EntityId, EntityIdHash> EditorApp::SubmitStaticBatches(const 
   for (size_t b = 0; b < lastStaticBuckets.size(); ++b) {
     const StaticBucketDraw& bd = lastStaticBuckets[b];
     const MeshRecord* mr = assets.GetByGuid(bd.guid);
-    if (mr == nullptr || !mr->gpuReady) {
+    if (mr == nullptr) {
       continue;
+    }
+    if (!mr->gpuReady) {
+      assets.EnsureMeshGpu(bd.guid, 4194304);
+      mr = assets.GetByGuid(bd.guid);
+      if (mr == nullptr || !mr->gpuReady) {
+        continue;
+      }
     }
     if (!bd.mat.vtGuid.empty()) {
       float bdx = (bd.bmin[0] + bd.bmax[0]) * 0.5f - cpos[0];
@@ -1577,8 +1581,12 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
       }
     }
     bool anyDrawn = false;
+    bool waitingForMesh = false;
     for (int li = 0; li < drawCount; ++li) {
       const MeshRecord* rec = assets.GetByGuid(drawGuids[li]);
+      if (rec != nullptr && !rec->gpuReady) {
+        waitingForMesh = true;
+      }
       if (rec != nullptr && rec->loaded && assets.EnsureMeshGpu(drawGuids[li], 4194304)) {
         rec = assets.GetByGuid(drawGuids[li]);
           if (rec != nullptr && rec->gpuReady) {
@@ -1602,7 +1610,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
       }
     }
     }
-    if (!anyDrawn && defaultVB != 0) {
+    if (!anyDrawn && !waitingForMesh && defaultVB != 0) {
       const MeshRecord* baserec = assets.GetByGuid(e->meshGuid);
       const DeferredMaterial* fallback = &grayMat;
       if (baserec == nullptr) {
@@ -3290,11 +3298,26 @@ void EditorApp::DrawMeshSection(Entity* e) {
       ImGui::Text("Missing asset");
       ImGui::PopStyleColor();
       ImGui::Text("Drop an asset here to reassign");
-    } else if (!rec->loaded || !rec->gpuReady) {
+    } else if (!rec->loaded) {
       ImGui::Text("Mesh: loading...");
     } else {
       std::filesystem::path mp(rec->meshPath);
       ImGui::Text("Mesh: %s", mp.filename().string().c_str());
+      if (rec->gpuFailed) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+        ImGui::Text("%s", rec->gpuError.empty() ? "GPU upload failed" : rec->gpuError.c_str());
+        ImGui::PopStyleColor();
+        if (ImGui::Button("Retry GPU upload")) {
+          assets.RetryMeshGpu(rec->guid);
+        }
+      } else if (!rec->gpuReady && rec->gpuVB != 0) {
+        uint64_t total = rec->gpuVBBytes + rec->gpuIBBytes;
+        uint64_t done = rec->stageVBDone + rec->stageIBDone;
+        float progress = total > 0 ? static_cast<float>(static_cast<double>(done) / static_cast<double>(total)) : 0.0f;
+        char label[64];
+        std::snprintf(label, sizeof(label), "Uploading mesh... %d%%", static_cast<int>(progress * 100.0f + 0.5f));
+        ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), label);
+      }
     }
   }
   if (ImGui::BeginDragDropTarget()) {
@@ -4586,6 +4609,8 @@ void EditorApp::DrawAssetBrowser() {
       return "[MISS]";
     } else if (!rec->loaded) {
       return "[LOAD]";
+    } else if (rec->gpuFailed) {
+      return "[GPU]";
     }
     return "";
   };

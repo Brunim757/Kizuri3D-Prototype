@@ -31,15 +31,18 @@ struct MeshRecord {
   MeshAssetData data;
   bool loaded;
   int64_t lastSeenSourceTime;
-  RHIBuffer gpuVB;
-  RHIBuffer gpuIB;
-  uint32_t gpuCount;
-  bool gpuReady;
+  RHIBuffer gpuVB = 0;
+  RHIBuffer gpuIB = 0;
+  uint32_t gpuCount = 0;
+  bool gpuReady = false;
+  bool gpuFailed = false;
+  uint64_t gpuVBBytes = 0;
+  uint64_t gpuIBBytes = 0;
+  uint64_t stageVBDone = 0;
+  uint64_t stageIBDone = 0;
+  std::string gpuError;
   bool meshletsBuilt = false;
   std::vector<MeshletRange> meshlets;
-  std::vector<float> stageInterleaved;
-  size_t stageVBDone;
-  size_t stageIBDone;
 };
 struct RefUse {
   std::string userLabel;
@@ -51,6 +54,8 @@ struct ImportResult {
   std::string sourcePath;
   std::string meshPath;
   MeshAssetData data;
+  std::vector<MeshletRange> meshlets;
+  bool meshletsBuilt = false;
   std::string warning;
   std::string error;
 };
@@ -61,6 +66,7 @@ struct ImportMeshTask : public enki::ITaskSet {
   std::string meshPath;
   std::string keepGuid;
   size_t taskId;
+  bool buildMeshlets = false;
   std::atomic<int> progress;
   std::mutex* outMutex;
   std::vector<ImportResult>* outQueue;
@@ -207,6 +213,9 @@ public:
   RHITexture ImportHdrSkyFromMemory(const unsigned char* data, size_t size);
   RHITexture EquirectToCube(const float* hdr, int w, int h);
   bool EnsureMeshGpu(const std::string& guid, size_t maxBytes);
+  void RetryMeshGpu(const std::string& guid);
+  void SetBuildMeshlets(bool on) { buildMeshlets = on; }
+  bool BuildMeshletsOn() const { return buildMeshlets; }
   void DropMeshGpu(MeshRecord& record);
   void UpsertBatchMesh(const std::string& key, const MeshAssetData& data);
   void DiscardBatchMeshes();
@@ -261,6 +270,8 @@ private:
   bool geoStreaming = false;
   float geoStreamDist = 80.0f;
   uint64_t streamEvictions = 0;
+  bool buildMeshlets = false;
+  std::vector<unsigned char> meshUploadScratch;
   RHITexture cookieArrayTex = 0;
   RHITexture decalAtlasTex = 0;
   struct VtEntry {
@@ -305,9 +316,10 @@ private:
   bool DecodePendingFor(const std::string& path) const;
   bool SiblingUsable(const std::string& sourcePath, bool isTex) const;
   bool TryReconnectByHash(const std::string& path, uint64_t hash, int64_t fileTime);
-  void UpsertResult(const ImportResult& result);
+  MeshRecord* UpsertResult(ImportResult& result);
   void UpsertTexResult(const ImportTexResult& result);
   MeshRecord* FindByGuid(const std::string& guid);
+  void FailMeshGpu(MeshRecord& record, const char* error);
   void InitFreshMeshState(MeshRecord& record);
   void InitFreshTexState(TextureRecord& record);
 };

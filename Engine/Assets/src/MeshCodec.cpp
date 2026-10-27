@@ -746,6 +746,9 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
   if (vcount == 0 || data.indices.size() < 768 || data.indices.size() % 3 != 0) {
     return false;
   }
+  if (vcount > 0xFFFFFFFFull || data.indices.size() > 0xFFFFFFFFull) {
+    return false;
+  }
   for (size_t i = 0; i < data.indices.size(); ++i) {
     if (data.indices[i] >= vcount) {
       return false;
@@ -795,31 +798,62 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
   std::vector<uint32_t> nidx;
   std::vector<MeshPartData> nparts;
   nidx.reserve(data.indices.size());
+  std::vector<uint32_t> partRemap(vcount, 0);
+  std::vector<uint32_t> partRemapGen(vcount, 0);
+  uint32_t partGen = 0;
   for (size_t wi = 0; wi < work.size(); ++wi) {
     const PartWork& w = work[wi];
     std::vector<unsigned int> idx(w.srcCount);
     for (uint32_t i = 0; i < w.srcCount; ++i) {
       idx[i] = data.indices[static_cast<size_t>(w.srcOff) + i];
     }
+    ++partGen;
+    if (partGen == 0) {
+      std::fill(partRemapGen.begin(), partRemapGen.end(), 0);
+      partGen = 1;
+    }
+    std::vector<uint32_t> used;
+    used.reserve(w.srcCount);
+    for (uint32_t i = 0; i < w.srcCount; ++i) {
+      unsigned int v = idx[i];
+      if (v >= vcount) {
+        return false;
+      }
+      if (partRemapGen[v] != partGen) {
+        partRemapGen[v] = partGen;
+        partRemap[v] = static_cast<uint32_t>(used.size());
+        used.push_back(v);
+      }
+    }
     struct LocalMeshlet {
       std::vector<unsigned int> verts;
       std::vector<unsigned int> tris;
     };
     std::vector<LocalMeshlet> localMeshlets;
-    {
-      size_t triCount = idx.size() / 3;
-      std::vector<std::vector<unsigned int>> vertTris(vcount);
+    size_t triCount = idx.size() / 3;
+    if (triCount > maxTris || used.size() > maxVerts) {
+      std::vector<uint32_t> adjStart(used.size() + 1, 0);
       for (size_t t = 0; t < triCount; ++t) {
         for (int c = 0; c < 3; ++c) {
-          unsigned int v = idx[t * 3 + c];
-          if (v < vcount) {
-            vertTris[v].push_back(static_cast<unsigned int>(t));
-          }
+          uint32_t lv = partRemap[idx[t * 3 + c]];
+          ++adjStart[lv + 1];
         }
       }
-  std::vector<unsigned char> triDone(triCount, 0);
-      std::vector<unsigned int> vertMark(vcount, 0);
+      for (size_t v = 0; v < used.size(); ++v) {
+        adjStart[v + 1] += adjStart[v];
+      }
+      std::vector<uint32_t> adjList(adjStart[used.size()]);
+      std::vector<uint32_t> adjCursor(adjStart.begin(), adjStart.end() - 1);
+      for (size_t t = 0; t < triCount; ++t) {
+        for (int c = 0; c < 3; ++c) {
+          uint32_t lv = partRemap[idx[t * 3 + c]];
+          adjList[adjCursor[lv]++] = static_cast<uint32_t>(t);
+        }
+      }
+      std::vector<unsigned char> triDone(triCount, 0);
       std::vector<unsigned int> seenMark(triCount, 0);
+      std::vector<unsigned int> localVertMark(used.size(), 0);
+      std::vector<uint32_t> meshletLocalIndex(used.size(), 0);
       unsigned int curMark = 1;
       unsigned int curSeen = 1;
       for (size_t seed = 0; seed < triCount; ++seed) {
@@ -842,14 +876,17 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
           unsigned int v0 = idx[t * 3 + 0];
           unsigned int v1 = idx[t * 3 + 1];
           unsigned int v2 = idx[t * 3 + 2];
+          uint32_t l0 = partRemap[v0];
+          uint32_t l1 = partRemap[v1];
+          uint32_t l2 = partRemap[v2];
           unsigned int add = 0;
-          if (v0 < vcount && vertMark[v0] != curMark) {
+          if (localVertMark[l0] != curMark) {
             ++add;
           }
-          if (v1 < vcount && vertMark[v1] != curMark) {
+          if (localVertMark[l1] != curMark) {
             ++add;
           }
-          if (v2 < vcount && vertMark[v2] != curMark) {
+          if (localVertMark[l2] != curMark) {
             ++add;
           }
           if (ml.verts.size() + add > maxVerts) {
@@ -857,34 +894,35 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
           }
           triDone[t] = 1;
           ml.tris.push_back(t);
-          if (v0 < vcount && vertMark[v0] != curMark) {
-            vertMark[v0] = curMark;
+          if (localVertMark[l0] != curMark) {
+            localVertMark[l0] = curMark;
+            meshletLocalIndex[l0] = static_cast<uint32_t>(ml.verts.size());
             ml.verts.push_back(v0);
           }
-          if (v1 < vcount && vertMark[v1] != curMark) {
-            vertMark[v1] = curMark;
+          if (localVertMark[l1] != curMark) {
+            localVertMark[l1] = curMark;
+            meshletLocalIndex[l1] = static_cast<uint32_t>(ml.verts.size());
             ml.verts.push_back(v1);
           }
-          if (v2 < vcount && vertMark[v2] != curMark) {
-            vertMark[v2] = curMark;
+          if (localVertMark[l2] != curMark) {
+            localVertMark[l2] = curMark;
+            meshletLocalIndex[l2] = static_cast<uint32_t>(ml.verts.size());
             ml.verts.push_back(v2);
           }
           unsigned int vs[3] = { v0, v1, v2 };
           for (int c = 0; c < 3; ++c) {
-            if (vs[c] >= vcount) {
-              continue;
-            }
-            const std::vector<unsigned int>& adj = vertTris[vs[c]];
-            for (size_t a = 0; a < adj.size(); ++a) {
-              if (!triDone[adj[a]]) {
-                stack.push_back(adj[a]);
+            uint32_t lv = partRemap[vs[c]];
+            for (uint32_t a = adjStart[lv]; a < adjStart[lv + 1]; ++a) {
+              unsigned int next = adjList[a];
+              if (!triDone[next]) {
+                stack.push_back(next);
               }
             }
           }
         }
         ++curMark;
         if (curMark == 0) {
-          std::fill(vertMark.begin(), vertMark.end(), 0);
+          std::fill(localVertMark.begin(), localVertMark.end(), 0);
           curMark = 1;
         }
         ++curSeen;
@@ -898,6 +936,9 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
       }
     }
     size_t mcount = localMeshlets.size();
+    if (nidx.size() > 0xFFFFFFFFull) {
+      return false;
+    }
     uint32_t partBase = static_cast<uint32_t>(nidx.size());
     if (mcount < 2) {
       float bmin[3] = { 1e30f, 1e30f, 1e30f };
@@ -929,8 +970,16 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
           cr = dd;
         }
       }
-      uint32_t vbase0 = static_cast<uint32_t>(npos.size() / 3);
-      for (size_t v = 0; v < vcount; ++v) {
+      uint64_t vbase0 = npos.size() / 3;
+      if (vbase0 > 0xFFFFFFFFull - static_cast<uint64_t>(used.size())) {
+        return false;
+      }
+      if (nidx.size() > 0xFFFFFFFFull - static_cast<uint64_t>(w.srcCount)) {
+        return false;
+      }
+      uint32_t base = static_cast<uint32_t>(vbase0);
+      for (size_t ui = 0; ui < used.size(); ++ui) {
+        unsigned int v = used[ui];
         npos.push_back(data.positions[v * 3 + 0]);
         npos.push_back(data.positions[v * 3 + 1]);
         npos.push_back(data.positions[v * 3 + 2]);
@@ -956,7 +1005,7 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
         }
       }
       for (uint32_t i = 0; i < w.srcCount; ++i) {
-        nidx.push_back(vbase0 + data.indices[static_cast<size_t>(w.srcOff) + i]);
+        nidx.push_back(base + partRemap[idx[i]]);
       }
       MeshletRange range;
       range.indexOffset = partBase;
@@ -1002,7 +1051,14 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
             cr = dd;
           }
         }
-        uint32_t vbase = static_cast<uint32_t>(npos.size() / 3);
+        uint64_t vbase64 = npos.size() / 3;
+        if (vbase64 > 0xFFFFFFFFull - static_cast<uint64_t>(ml.verts.size())) {
+          return false;
+        }
+        if (nidx.size() > 0xFFFFFFFFull - static_cast<uint64_t>(ml.tris.size()) * 3ull) {
+          return false;
+        }
+        uint32_t vbase = static_cast<uint32_t>(vbase64);
         for (size_t vi = 0; vi < ml.verts.size(); ++vi) {
           unsigned int src = ml.verts[vi];
           if (src >= vcount) {
@@ -1037,14 +1093,7 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
           unsigned int t = ml.tris[ti];
           for (int c = 0; c < 3; ++c) {
             unsigned int gv = idx[t * 3 + c];
-            unsigned int local = 0;
-            for (size_t vi = 0; vi < ml.verts.size(); ++vi) {
-              if (ml.verts[vi] == gv) {
-                local = static_cast<unsigned int>(vi);
-                break;
-              }
-            }
-            nidx.push_back(vbase + local);
+            nidx.push_back(vbase + meshletLocalIndex[partRemap[gv]]);
           }
         }
         MeshletRange range;
@@ -1063,6 +1112,9 @@ bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
         range.radius = cr;
         outRanges.push_back(range);
       }
+    }
+    if (nidx.size() > 0xFFFFFFFFull) {
+      return false;
     }
     MeshPartData part;
     part.indexOffset = partBase;

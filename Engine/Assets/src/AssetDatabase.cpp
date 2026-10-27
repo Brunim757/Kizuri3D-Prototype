@@ -49,6 +49,51 @@ bool StatTime(const std::string& path, int64_t& ticks) {
   ticks = static_cast<int64_t>(ft.time_since_epoch().count());
   return true;
 }
+bool TryBuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& out) {
+  try {
+    bool ok = BuildMeshlets(data, out);
+    if (!ok) {
+      out.clear();
+    }
+    return ok;
+  } catch (...) {
+    out.clear();
+    return false;
+  }
+}
+void BuildInterleavedRange(const MeshAssetData& data, size_t firstVertex, size_t vertexCount, std::vector<unsigned char>& out) {
+  size_t totalVerts = data.positions.size() / 3;
+  bool hasUv = data.uvs.size() == totalVerts * 2;
+  bool hasTan = data.tangents.size() == totalVerts * 4;
+  bool hasUv2 = data.uv2s.size() == totalVerts * 2;
+  out.resize(vertexCount * 14 * sizeof(float));
+  float* dst = reinterpret_cast<float*>(out.data());
+  for (size_t i = 0; i < vertexCount; ++i) {
+    size_t v = firstVertex + i;
+    size_t o = i * 14;
+    dst[o + 0] = data.positions[v * 3 + 0];
+    dst[o + 1] = data.positions[v * 3 + 1];
+    dst[o + 2] = data.positions[v * 3 + 2];
+    dst[o + 3] = data.normals[v * 3 + 0];
+    dst[o + 4] = data.normals[v * 3 + 1];
+    dst[o + 5] = data.normals[v * 3 + 2];
+    dst[o + 6] = hasUv ? data.uvs[v * 2 + 0] : 0.0f;
+    dst[o + 7] = hasUv ? data.uvs[v * 2 + 1] : 0.0f;
+    if (hasTan) {
+      dst[o + 8] = data.tangents[v * 4 + 0];
+      dst[o + 9] = data.tangents[v * 4 + 1];
+      dst[o + 10] = data.tangents[v * 4 + 2];
+      dst[o + 11] = data.tangents[v * 4 + 3];
+    } else {
+      dst[o + 8] = 1.0f;
+      dst[o + 9] = 0.0f;
+      dst[o + 10] = 0.0f;
+      dst[o + 11] = 1.0f;
+    }
+    dst[o + 12] = hasUv2 ? data.uv2s[v * 2 + 0] : 0.0f;
+    dst[o + 13] = hasUv2 ? data.uv2s[v * 2 + 1] : 0.0f;
+  }
+}
 }
 ImportMeshTask::ImportMeshTask()
   : taskId(0)
@@ -69,6 +114,10 @@ void ImportMeshTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadn
   if (sourcePath.empty()) {
     try {
       if (DecodeMeshFile(meshPath, result.data) && !result.data.guid.empty()) {
+        if (buildMeshlets) {
+          result.meshletsBuilt = true;
+          TryBuildMeshlets(result.data, result.meshlets);
+        }
         result.ok = true;
         result.sourcePath = meshPath;
       }
@@ -82,6 +131,10 @@ void ImportMeshTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadn
       LogStore log;
       if (ImportGltfMesh(sourcePath, keepGuid, result.data, &log, &progress)) {
         if (EncodeMeshFile(result.data, meshPath)) {
+          if (buildMeshlets) {
+            result.meshletsBuilt = true;
+            TryBuildMeshlets(result.data, result.meshlets);
+          }
           result.ok = true;
         }
       }
@@ -109,7 +162,7 @@ void ImportMeshTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadn
   progress = 100;
   if (outMutex != nullptr && outQueue != nullptr) {
     std::lock_guard<std::mutex> lock(*outMutex);
-    outQueue->push_back(result);
+    outQueue->push_back(std::move(result));
   }
 }
 namespace {
@@ -204,6 +257,7 @@ void AssetDatabase::EnqueueImport(const std::string& sourcePath, const std::stri
   task->meshPath = meshPath;
   task->keepGuid = keepGuid;
   task->taskId = nextTaskId++;
+  task->buildMeshlets = buildMeshlets;
   task->outMutex = &completedMutex;
   task->outQueue = &completed;
   jobs.AddTask(task.get());
@@ -242,7 +296,7 @@ void LodBakeTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum)
       result.data = lodMesh;
       if (outMutex != nullptr && outQueue != nullptr) {
         std::lock_guard<std::mutex> lock(*outMutex);
-        outQueue->push_back(result);
+        outQueue->push_back(std::move(result));
       }
     }
   }
@@ -481,7 +535,7 @@ void ImportTexTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnu
   progress = 100;
   if (outMutex != nullptr && outQueue != nullptr) {
     std::lock_guard<std::mutex> lock(*outMutex);
-    outQueue->push_back(result);
+    outQueue->push_back(std::move(result));
   }
 }
 HashTask::HashTask()
@@ -513,7 +567,7 @@ void HashTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
   progress = 100;
   if (outMutex != nullptr && outQueue != nullptr) {
     std::lock_guard<std::mutex> lock(*outMutex);
-    outQueue->push_back(result);
+    outQueue->push_back(std::move(result));
   }
 }
 void AssetDatabase::EnqueueDecode(const std::string& compiledPath, bool isTex) {
@@ -540,6 +594,7 @@ void AssetDatabase::EnqueueDecode(const std::string& compiledPath, bool isTex) {
     task->meshPath = compiledPath;
     task->keepGuid = "";
     task->taskId = nextTaskId++;
+    task->buildMeshlets = buildMeshlets;
     task->outMutex = &completedMutex;
     task->outQueue = &completed;
     jobs.AddTask(task.get());
@@ -725,9 +780,9 @@ size_t AssetDatabase::DrainCompleted() {
         }
       }
     } else {
-      UpsertResult(results[i]);
-      if (results[i].sourcePath != results[i].meshPath && results[i].data.indices.size() >= 6000) {
-        EnqueueLodBake(results[i].data, results[i].meshPath);
+      MeshRecord* upserted = UpsertResult(results[i]);
+      if (upserted != nullptr && results[i].sourcePath != results[i].meshPath && upserted->data.indices.size() >= 6000) {
+        EnqueueLodBake(upserted->data, results[i].meshPath);
       }
       if (!results[i].warning.empty()) {
         std::string name = results[i].sourcePath;
@@ -968,40 +1023,44 @@ void AssetDatabase::InitFreshTexState(TextureRecord& record) {
   }
   record.state = TextureAssetState::NoSource;
 }
-void AssetDatabase::UpsertResult(const ImportResult& result) {
+MeshRecord* AssetDatabase::UpsertResult(ImportResult& result) {
   if (!result.ok || result.data.guid.empty()) {
-    return;
+    return nullptr;
   }
-  MeshRecord* existing = FindByGuid(result.data.guid);
+  std::string guid = result.data.guid;
+  MeshRecord* existing = FindByGuid(guid);
+  MeshRecord* out = nullptr;
   if (existing != nullptr) {
     DropMeshGpu(*existing);
     existing->meshPath = result.meshPath;
     existing->sourcePath = result.data.sourcePath;
     existing->sourceHash = result.data.sourceHash;
     existing->hasSource = result.data.hasSource;
-    existing->data = result.data;
+    existing->data = std::move(result.data);
     existing->loaded = true;
+    existing->meshlets = std::move(result.meshlets);
+    existing->meshletsBuilt = result.meshletsBuilt;
     InitFreshMeshState(*existing);
+    out = existing;
   } else {
     MeshRecord record;
-    record.guid = result.data.guid;
+    record.guid = guid;
     record.meshPath = result.meshPath;
     record.sourcePath = result.data.sourcePath;
     record.sourceHash = result.data.sourceHash;
     record.hasSource = result.data.hasSource;
-    record.data = result.data;
+    record.data = std::move(result.data);
     record.loaded = true;
-    record.gpuVB = 0;
-    record.gpuIB = 0;
-    record.gpuCount = 0;
-    record.gpuReady = false;
+    record.meshlets = std::move(result.meshlets);
+    record.meshletsBuilt = result.meshletsBuilt;
     InitFreshMeshState(record);
-    records[record.guid] = record;
+    out = &records.emplace(guid, std::move(record)).first->second;
   }
   int64_t mtime = 0;
   StatTime(result.meshPath, mtime);
-  pathToGuid[result.meshPath] = result.data.guid;
+  pathToGuid[result.meshPath] = guid;
   seenMeshTime[result.meshPath] = mtime;
+  return out;
 }
 const MeshRecord* AssetDatabase::GetByGuid(const std::string& guid) const {
   auto it = records.find(guid);
@@ -1333,6 +1392,8 @@ void AssetDatabase::UpsertBatchMesh(const std::string& key, const MeshAssetData&
     DropMeshGpu(it->second);
     it->second.data = data;
     it->second.loaded = true;
+    it->second.meshlets.clear();
+    it->second.meshletsBuilt = false;
     return;
   }
   MeshRecord rec;
@@ -1345,13 +1406,7 @@ void AssetDatabase::UpsertBatchMesh(const std::string& key, const MeshAssetData&
   rec.data = data;
   rec.loaded = true;
   rec.lastSeenSourceTime = 0;
-  rec.gpuVB = 0;
-  rec.gpuIB = 0;
-  rec.gpuCount = 0;
-  rec.gpuReady = false;
-  rec.stageVBDone = 0;
-  rec.stageIBDone = 0;
-  records[key] = rec;
+  records.emplace(key, std::move(rec));
 }
 void AssetDatabase::DiscardBatchMeshes() {
   for (auto it = records.begin(); it != records.end();) {
@@ -2162,9 +2217,12 @@ void AssetDatabase::DropMeshGpu(MeshRecord& record) {
   record.gpuIB = 0;
   record.gpuCount = 0;
   record.gpuReady = false;
-  record.stageInterleaved.clear();
+  record.gpuFailed = false;
+  record.gpuVBBytes = 0;
+  record.gpuIBBytes = 0;
   record.stageVBDone = 0;
   record.stageIBDone = 0;
+  record.gpuError.clear();
 }
 void AssetDatabase::DropTexGpu(TextureRecord& record) {
   if (gpuRhi != nullptr && record.gpu != 0) {
@@ -2172,6 +2230,17 @@ void AssetDatabase::DropTexGpu(TextureRecord& record) {
   }
   record.gpu = 0;
   record.residentLevels = 0;
+}
+void AssetDatabase::FailMeshGpu(MeshRecord& record, const char* error) {
+  DropMeshGpu(record);
+  record.gpuFailed = true;
+  record.gpuError = error != nullptr ? error : "GPU upload failed";
+}
+void AssetDatabase::RetryMeshGpu(const std::string& guid) {
+  MeshRecord* record = FindByGuid(guid);
+  if (record != nullptr) {
+    DropMeshGpu(*record);
+  }
 }
 bool AssetDatabase::EnsureMeshGpu(const std::string& guid, size_t maxBytes) {
   MeshRecord* record = FindByGuid(guid);
@@ -2181,6 +2250,9 @@ bool AssetDatabase::EnsureMeshGpu(const std::string& guid, size_t maxBytes) {
   if (record->gpuReady) {
     return true;
   }
+  if (record->gpuFailed) {
+    return false;
+  }
   if (maxBytes == 0) {
     return false;
   }
@@ -2188,85 +2260,108 @@ bool AssetDatabase::EnsureMeshGpu(const std::string& guid, size_t maxBytes) {
   if (vertexCount == 0 || record->data.indices.empty()) {
     return false;
   }
-  if (!record->meshletsBuilt) {
-    record->meshletsBuilt = true;
-    std::vector<MeshletRange> ranges;
-    if (BuildMeshlets(record->data, ranges)) {
-      record->meshlets = ranges;
-    }
+  if (record->data.normals.size() != vertexCount * 3) {
+    FailMeshGpu(*record, "Mesh data has invalid normals");
+    return false;
   }
-  size_t vbBytes = vertexCount * 56;
-  size_t ibBytes = record->data.indices.size() * 4;
+  uint64_t vbBytes = static_cast<uint64_t>(vertexCount) * 56ull;
+  uint64_t ibBytes = static_cast<uint64_t>(record->data.indices.size()) * 4ull;
+  if (vbBytes > 0xFFFFFFFFull || ibBytes > 0xFFFFFFFFull) {
+    FailMeshGpu(*record, "Mesh exceeds the 4 GB GPU buffer limit");
+    return false;
+  }
+  uint64_t vbAlloc = (vbBytes + 15ull) & ~15ull;
+  uint64_t ibAlloc = (ibBytes + 15ull) & ~15ull;
+  if (vbAlloc > 0xFFFFFFFFull || ibAlloc > 0xFFFFFFFFull) {
+    FailMeshGpu(*record, "Mesh exceeds the 4 GB GPU buffer limit");
+    return false;
+  }
+  if (record->gpuVB != 0 && (record->gpuVBBytes != vbBytes || record->gpuIBBytes != ibBytes)) {
+    DropMeshGpu(*record);
+  }
   if (record->gpuVB == 0) {
-    record->stageInterleaved.clear();
-    record->stageInterleaved.reserve(vertexCount * 14);
-    for (size_t i = 0; i < vertexCount; ++i) {
-      record->stageInterleaved.push_back(record->data.positions[i * 3 + 0]);
-      record->stageInterleaved.push_back(record->data.positions[i * 3 + 1]);
-      record->stageInterleaved.push_back(record->data.positions[i * 3 + 2]);
-      record->stageInterleaved.push_back(record->data.normals[i * 3 + 0]);
-      record->stageInterleaved.push_back(record->data.normals[i * 3 + 1]);
-      record->stageInterleaved.push_back(record->data.normals[i * 3 + 2]);
-      record->stageInterleaved.push_back(record->data.uvs[i * 2 + 0]);
-      record->stageInterleaved.push_back(record->data.uvs[i * 2 + 1]);
-      record->stageInterleaved.push_back(record->data.tangents[i * 4 + 0]);
-      record->stageInterleaved.push_back(record->data.tangents[i * 4 + 1]);
-      record->stageInterleaved.push_back(record->data.tangents[i * 4 + 2]);
-      record->stageInterleaved.push_back(record->data.tangents[i * 4 + 3]);
-      float uv2u = 0.0f;
-      float uv2v = 0.0f;
-      if (record->data.uv2s.size() == vertexCount * 2) {
-        uv2u = record->data.uv2s[i * 2 + 0];
-        uv2v = record->data.uv2s[i * 2 + 1];
-      }
-      record->stageInterleaved.push_back(uv2u);
-      record->stageInterleaved.push_back(uv2v);
-    }
-    RHIBuffer vb = gpuRhi->CreateBufferEmpty(static_cast<uint64_t>(vbBytes), 56, false);
+    RHIBuffer vb = gpuRhi->CreateBuffer(vbAlloc, 56, false, nullptr);
     if (vb == 0) {
-      record->stageInterleaved.clear();
+      FailMeshGpu(*record, "GPU vertex buffer allocation failed");
       return false;
     }
-    RHIBuffer ib = gpuRhi->CreateBufferEmpty(static_cast<uint64_t>(ibBytes), 4, true);
+    RHIBuffer ib = gpuRhi->CreateBuffer(ibAlloc, 4, true, nullptr);
     if (ib == 0) {
       gpuRhi->DestroyBuffer(vb);
-      record->stageInterleaved.clear();
+      FailMeshGpu(*record, "GPU index buffer allocation failed");
       return false;
     }
     record->gpuVB = vb;
     record->gpuIB = ib;
+    record->gpuVBBytes = vbBytes;
+    record->gpuIBBytes = ibBytes;
     record->stageVBDone = 0;
     record->stageIBDone = 0;
   }
   size_t budget = maxBytes;
-  const unsigned char* vbytes = reinterpret_cast<const unsigned char*>(record->stageInterleaved.data());
   while (budget > 0 && record->stageVBDone < vbBytes) {
-    size_t chunk = vbBytes - record->stageVBDone;
-    if (chunk > budget) {
-      chunk = budget;
+    uint64_t remain = vbBytes - record->stageVBDone;
+    uint64_t chunkVerts = static_cast<uint64_t>(budget) / 56ull;
+    if (chunkVerts < 2) {
+      chunkVerts = 2;
     }
-    if (!gpuRhi->UpdateBufferRange(record->gpuVB, record->stageVBDone, vbytes + record->stageVBDone, chunk)) {
+    chunkVerts &= ~1ull;
+    uint64_t maxVerts = remain / 56ull;
+    if (chunkVerts > maxVerts) {
+      chunkVerts = maxVerts;
+    }
+    if (chunkVerts == 0) {
+      break;
+    }
+    uint64_t chunkBytes = chunkVerts * 56ull;
+    uint64_t uploadBytes = (chunkBytes + 15ull) & ~15ull;
+    BuildInterleavedRange(record->data, static_cast<size_t>(record->stageVBDone / 56ull), static_cast<size_t>(chunkVerts), meshUploadScratch);
+    if (meshUploadScratch.size() < uploadBytes) {
+      meshUploadScratch.resize(static_cast<size_t>(uploadBytes), 0);
+    }
+    if (!gpuRhi->UpdateBufferRange(record->gpuVB, record->stageVBDone, meshUploadScratch.data(), static_cast<size_t>(uploadBytes))) {
+      FailMeshGpu(*record, "GPU vertex upload failed");
       return false;
     }
-    record->stageVBDone += chunk;
-    budget -= chunk;
+    record->stageVBDone += chunkBytes;
+    if (chunkBytes >= budget) {
+      budget = 0;
+    } else {
+      budget -= static_cast<size_t>(chunkBytes);
+    }
   }
-  const unsigned char* ibytes = reinterpret_cast<const unsigned char*>(record->data.indices.data());
   while (budget > 0 && record->stageIBDone < ibBytes) {
-    size_t chunk = ibBytes - record->stageIBDone;
-    if (chunk > budget) {
-      chunk = budget;
+    uint64_t remain = ibBytes - record->stageIBDone;
+    uint64_t chunkBytes = remain < static_cast<uint64_t>(budget) ? remain : static_cast<uint64_t>(budget);
+    if (chunkBytes < remain) {
+      chunkBytes &= ~15ull;
+      if (chunkBytes == 0) {
+        chunkBytes = 16;
+      }
     }
-    if (!gpuRhi->UpdateBufferRange(record->gpuIB, record->stageIBDone, ibytes + record->stageIBDone, chunk)) {
+    if (chunkBytes > remain) {
+      chunkBytes = remain;
+    }
+    uint64_t uploadBytes = (chunkBytes + 15ull) & ~15ull;
+    meshUploadScratch.resize(static_cast<size_t>(uploadBytes));
+    std::memcpy(meshUploadScratch.data(), reinterpret_cast<const unsigned char*>(record->data.indices.data()) + record->stageIBDone, static_cast<size_t>(chunkBytes));
+    if (uploadBytes > chunkBytes) {
+      std::memset(meshUploadScratch.data() + chunkBytes, 0, static_cast<size_t>(uploadBytes - chunkBytes));
+    }
+    if (!gpuRhi->UpdateBufferRange(record->gpuIB, record->stageIBDone, meshUploadScratch.data(), static_cast<size_t>(uploadBytes))) {
+      FailMeshGpu(*record, "GPU index upload failed");
       return false;
     }
-    record->stageIBDone += chunk;
-    budget -= chunk;
+    record->stageIBDone += chunkBytes;
+    if (chunkBytes >= budget) {
+      budget = 0;
+    } else {
+      budget -= static_cast<size_t>(chunkBytes);
+    }
   }
   if (record->stageVBDone == vbBytes && record->stageIBDone == ibBytes) {
     record->gpuCount = static_cast<uint32_t>(record->data.indices.size());
     record->gpuReady = true;
-    record->stageInterleaved.clear();
     return true;
   }
   return false;

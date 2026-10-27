@@ -1406,6 +1406,72 @@ bool TestMeshlets() {
   }
   return true;
 }
+bool TestMeshletParts() {
+  Kizuri::MeshAssetData grid;
+  const int n = 12;
+  for (int y = 0; y <= n; ++y) {
+    for (int x = 0; x <= n; ++x) {
+      grid.positions.push_back(static_cast<float>(x));
+      grid.positions.push_back(static_cast<float>(y));
+      grid.positions.push_back(0.0f);
+      grid.normals.push_back(0.0f);
+      grid.normals.push_back(0.0f);
+      grid.normals.push_back(1.0f);
+      grid.uvs.push_back(static_cast<float>(x) / n);
+      grid.uvs.push_back(static_cast<float>(y) / n);
+    }
+  }
+  for (int y = 0; y < n; ++y) {
+    for (int x = 0; x < n; ++x) {
+      uint32_t a = static_cast<uint32_t>(y * (n + 1) + x);
+      uint32_t b2 = a + 1;
+      uint32_t c = a + n + 1;
+      uint32_t d = c + 1;
+      grid.indices.push_back(a);
+      grid.indices.push_back(b2);
+      grid.indices.push_back(c);
+      grid.indices.push_back(b2);
+      grid.indices.push_back(d);
+      grid.indices.push_back(c);
+    }
+  }
+  size_t before = grid.indices.size();
+  for (size_t off = 0; off < grid.indices.size(); off += 30) {
+    size_t count = grid.indices.size() - off;
+    if (count > 30) {
+      count = 30;
+    }
+    Kizuri::MeshPartData part;
+    part.indexOffset = static_cast<uint32_t>(off);
+    part.indexCount = static_cast<uint32_t>(count);
+    part.material = 0;
+    grid.parts.push_back(part);
+  }
+  std::vector<Kizuri::MeshletRange> ranges;
+  if (!Kizuri::BuildMeshlets(grid, ranges)) {
+    return false;
+  }
+  if (ranges.size() != grid.parts.size()) {
+    return false;
+  }
+  size_t total = 0;
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    total += ranges[i].indexCount;
+  }
+  if (total != before || grid.indices.size() != before) {
+    return false;
+  }
+  size_t outVerts = grid.positions.size() / 3;
+  if (outVerts > grid.parts.size() * 30) {
+    return false;
+  }
+  for (size_t i = 0; i < grid.indices.size(); ++i) {
+    if (grid.indices[i] >= outVerts) {
+      return false;
+    }
+  }
+  return true;
+}
 bool TestMeshStreaming() {
   namespace fs = std::filesystem;
   fs::path dir = fs::temp_directory_path() / "kzmeshstream_test";
@@ -12087,6 +12153,17 @@ bool TestMeshStaging() {
     fs::remove_all(dir, ec);
     return false;
   }
+  if (db.EnsureMeshGpu(big.guid, 4096)) {
+    Kizuri::DestroyRHI(rhi);
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  const Kizuri::MeshRecord* progress = db.GetByGuid(big.guid);
+  if (progress == nullptr || progress->gpuReady || progress->gpuVB == 0 || progress->stageVBDone == 0 || progress->gpuVBBytes != static_cast<uint64_t>(big.positions.size() / 3) * 56ull || progress->gpuIBBytes != static_cast<uint64_t>(big.indices.size()) * 4ull) {
+    Kizuri::DestroyRHI(rhi);
+    fs::remove_all(dir, ec);
+    return false;
+  }
   int iters = 0;
   while (!db.EnsureMeshGpu(big.guid, 4096)) {
     if (++iters > 10000) {
@@ -12106,7 +12183,187 @@ bool TestMeshStaging() {
     fs::remove_all(dir, ec);
     return false;
   }
+  if (rec->gpuVBBytes != static_cast<uint64_t>(big.positions.size() / 3) * 56ull || rec->gpuIBBytes != static_cast<uint64_t>(big.indices.size()) * 4ull || rec->stageVBDone != rec->gpuVBBytes || rec->stageIBDone != rec->gpuIBBytes) {
+    Kizuri::DestroyRHI(rhi);
+    fs::remove_all(dir, ec);
+    return false;
+  }
   Kizuri::DestroyRHI(rhi);
+  fs::remove_all(dir, ec);
+  return true;
+}
+bool TestMeshGpuRetry() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 64;
+  desc.height = 64;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  auto fail = [&]() -> bool {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  };
+  Kizuri::AssetDatabase db;
+  db.SetGpuRHI(rhi);
+  Kizuri::MeshAssetData bad;
+  bad.guid = "batch://retry";
+  bad.positions = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f };
+  bad.indices = { 0, 1, 2 };
+  bad.aabbMin[0] = 0.0f;
+  bad.aabbMin[1] = 0.0f;
+  bad.aabbMin[2] = 0.0f;
+  bad.aabbMax[0] = 1.0f;
+  bad.aabbMax[1] = 1.0f;
+  bad.aabbMax[2] = 0.0f;
+  bad.hasSource = false;
+  bad.sourceHash = 0;
+  bad.sourceTimestamp = 0;
+  db.UpsertBatchMesh("batch://retry", bad);
+  if (db.EnsureMeshGpu("batch://retry", 1048576)) {
+    return fail();
+  }
+  const Kizuri::MeshRecord* rec = db.GetByGuid("batch://retry");
+  if (rec == nullptr || !rec->gpuFailed || rec->gpuError.empty()) {
+    return fail();
+  }
+  db.RetryMeshGpu("batch://retry");
+  rec = db.GetByGuid("batch://retry");
+  if (rec == nullptr || rec->gpuFailed || !rec->gpuError.empty()) {
+    return fail();
+  }
+  Kizuri::MeshAssetData good = bad;
+  good.normals = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  db.UpsertBatchMesh("batch://retry", good);
+  if (!db.EnsureMeshGpu("batch://retry", 1048576)) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://retry");
+  if (rec == nullptr || !rec->gpuReady || rec->gpuCount != 3 || rec->gpuVB == 0 || rec->gpuIB == 0) {
+    return fail();
+  }
+  db.RetryMeshGpu("batch://retry");
+  rec = db.GetByGuid("batch://retry");
+  if (rec == nullptr || rec->gpuReady || rec->gpuVB != 0 || rec->gpuIB != 0 || rec->stageVBDone != 0 || rec->stageIBDone != 0) {
+    return fail();
+  }
+  if (!db.EnsureMeshGpu("batch://retry", 1048576)) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://retry");
+  if (rec == nullptr || !rec->gpuReady) {
+    return fail();
+  }
+  Kizuri::DestroyRHI(rhi);
+  return true;
+}
+bool TestMeshletsBackground() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "kzmeshlets_bg_test";
+  std::error_code ec;
+  fs::remove_all(dir, ec);
+  fs::create_directories(dir, ec);
+  Kizuri::MeshAssetData grid;
+  grid.guid = Kizuri::GenerateGuidString();
+  const int n = 12;
+  for (int y = 0; y <= n; ++y) {
+    for (int x = 0; x <= n; ++x) {
+      grid.positions.push_back(static_cast<float>(x));
+      grid.positions.push_back(static_cast<float>(y));
+      grid.positions.push_back(0.0f);
+      grid.normals.push_back(0.0f);
+      grid.normals.push_back(0.0f);
+      grid.normals.push_back(1.0f);
+      grid.uvs.push_back(static_cast<float>(x) / n);
+      grid.uvs.push_back(static_cast<float>(y) / n);
+    }
+  }
+  for (int y = 0; y < n; ++y) {
+    for (int x = 0; x < n; ++x) {
+      uint32_t a = static_cast<uint32_t>(y * (n + 1) + x);
+      uint32_t b2 = a + 1;
+      uint32_t c = a + n + 1;
+      uint32_t d = c + 1;
+      grid.indices.push_back(a);
+      grid.indices.push_back(b2);
+      grid.indices.push_back(c);
+      grid.indices.push_back(b2);
+      grid.indices.push_back(d);
+      grid.indices.push_back(c);
+    }
+  }
+  Kizuri::MeshPartData part;
+  part.indexOffset = 0;
+  part.indexCount = static_cast<uint32_t>(grid.indices.size());
+  part.material = 0;
+  grid.parts.push_back(part);
+  grid.aabbMin[0] = 0.0f;
+  grid.aabbMin[1] = 0.0f;
+  grid.aabbMin[2] = 0.0f;
+  grid.aabbMax[0] = static_cast<float>(n);
+  grid.aabbMax[1] = static_cast<float>(n);
+  grid.aabbMax[2] = 0.0f;
+  grid.hasSource = false;
+  grid.sourceHash = 0;
+  grid.sourceTimestamp = 0;
+  if (!Kizuri::EncodeMeshFile(grid, (dir / "grid.kzmesh").string())) {
+    fs::remove_all(dir, ec);
+    return false;
+  }
+  Kizuri::IRHI* rhi = nullptr;
+  auto fail = [&]() -> bool {
+    if (rhi != nullptr) {
+      Kizuri::DestroyRHI(rhi);
+    }
+    std::error_code cleanupEc;
+    fs::remove_all(dir, cleanupEc);
+    return false;
+  };
+  Kizuri::AssetDatabase db;
+  db.SetAssetsDir(dir.string());
+  db.SetBuildMeshlets(true);
+  db.Scan();
+  db.DrainBlocking();
+  const Kizuri::MeshRecord* rec = db.GetByGuid(grid.guid);
+  if (rec == nullptr || !rec->loaded || !rec->meshletsBuilt || rec->meshlets.size() < 2) {
+    return fail();
+  }
+  size_t rangeTotal = 0;
+  for (size_t i = 0; i < rec->meshlets.size(); ++i) {
+    rangeTotal += rec->meshlets[i].indexCount;
+  }
+  if (rangeTotal != rec->data.indices.size()) {
+    return fail();
+  }
+  size_t meshletCount = rec->meshlets.size();
+  rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return fail();
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 64;
+  desc.height = 64;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    return fail();
+  }
+  db.SetGpuRHI(rhi);
+  if (!db.EnsureMeshGpu(grid.guid, 1048576)) {
+    return fail();
+  }
+  rec = db.GetByGuid(grid.guid);
+  if (rec == nullptr || !rec->gpuReady || rec->meshlets.size() != meshletCount || rec->gpuCount != rec->data.indices.size()) {
+    return fail();
+  }
+  Kizuri::DestroyRHI(rhi);
+  rhi = nullptr;
   fs::remove_all(dir, ec);
   return true;
 }
@@ -12160,6 +12417,7 @@ int main() {
   failures += Check("GpuDriven", TestGpuDriven());
   failures += Check("StaticMerge", TestStaticMerge());
   failures += Check("Meshlets", TestMeshlets());
+  failures += Check("MeshletParts", TestMeshletParts());
   failures += Check("MeshStreaming", TestMeshStreaming());
   failures += Check("CookieArray", TestCookieArray());
   failures += Check("Procedural", TestProcedural());
@@ -12322,6 +12580,8 @@ int main() {
   failures += Check("GltfOrm", TestGltfOrm());
   failures += Check("RHIBuffers", TestRHIBuffers());
   failures += Check("MeshStaging", TestMeshStaging());
+  failures += Check("MeshGpuRetry", TestMeshGpuRetry());
+  failures += Check("MeshletsBackground", TestMeshletsBackground());
   failures += Check("SetMeshGuid", TestSetMeshGuid());
   failures += Check("AddRemoveMesh", TestAddRemoveMeshComponent());
   failures += Check("RecycledEntityDefaults", TestRecycledEntityDefaults());

@@ -592,6 +592,7 @@ bool EditorApp::Initialize() {
   });
   assets.SetAssetsDir(ResolveAssetsDir());
   assets.SetGpuRHI(rhi);
+  assets.SetBuildMeshlets(true);
   if (!optNoAudio && audio.Initialize(48000, 2)) {
     audioReady = true;
     if (audio.Mixer().LoadFromFile(AudioMixerPath())) {
