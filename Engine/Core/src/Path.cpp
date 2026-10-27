@@ -1,5 +1,6 @@
 #include "Kizuri/Path.h"
 #include <cctype>
+#include <filesystem>
 namespace Kizuri {
 namespace Path {
 std::string FileName(const std::string& path) {
@@ -71,6 +72,34 @@ bool HasExtension(const std::string& path, const char* ext) {
     return false;
   }
   return ExtensionLower(path) == ext;
+}
+bool CopyFileUnique(const std::string& source, const std::string& destinationDir, std::string& outPath) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  const fs::path sourcePath(source);
+  if (!fs::is_regular_file(sourcePath, ec) || ec) {
+    return false;
+  }
+  const fs::path dir(destinationDir);
+  fs::create_directories(dir, ec);
+  if (ec) {
+    return false;
+  }
+  fs::path destination = dir / sourcePath.filename();
+  std::error_code sameEc;
+  if (!fs::equivalent(sourcePath, destination, sameEc) || sameEc) {
+    int suffix = 0;
+    while (fs::exists(destination)) {
+      ++suffix;
+      destination = dir / (sourcePath.stem().string() + "_" + std::to_string(suffix) + sourcePath.extension().string());
+    }
+    fs::copy_file(sourcePath, destination, fs::copy_options::none, ec);
+    if (ec) {
+      return false;
+    }
+  }
+  outPath = Normalize(destination.string());
+  return true;
 }
 }
 namespace Str {

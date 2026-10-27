@@ -56,6 +56,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <utility>
 #include <TaskScheduler.h>
 #include <cstdio>
@@ -312,6 +313,34 @@ bool TestPath() {
   ok = ok && Str::EndsWith("hello", "lo") && !Str::EndsWith("lo", "hello");
   ok = ok && Str::Trim("  x \t") == "x";
   ok = ok && AlignUp(13, 8) == 16 && AlignUp(16, 8) == 16 && IsPowerOfTwo(8) && !IsPowerOfTwo(12);
+  return ok;
+}
+bool TestPathCopy() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "kzpathcopy_test";
+  std::error_code ec;
+  fs::remove_all(dir, ec);
+  fs::create_directories(dir / "src", ec);
+  if (ec) {
+    return false;
+  }
+  {
+    std::ofstream out(dir / "src" / "clip.wav", std::ios::binary);
+    out.write("abc", 3);
+  }
+  std::string first;
+  bool ok = Kizuri::Path::CopyFileUnique((dir / "src" / "clip.wav").string(), (dir / "dst").string(), first);
+  ok = ok && fs::exists(first, ec) && Kizuri::Path::FileName(first) == "clip.wav";
+  std::string second;
+  ok = ok && Kizuri::Path::CopyFileUnique((dir / "src" / "clip.wav").string(), (dir / "dst").string(), second);
+  ok = ok && Kizuri::Path::FileName(second) == "clip_1.wav";
+  std::string same;
+  ok = ok && Kizuri::Path::CopyFileUnique(first, (dir / "dst").string(), same);
+  ok = ok && Kizuri::Path::Normalize(same) == Kizuri::Path::Normalize(first);
+  std::string missing;
+  ok = ok && !Kizuri::Path::CopyFileUnique((dir / "src" / "nope.wav").string(), (dir / "dst").string(), missing);
+  ok = ok && fs::file_size(first, ec) == 3 && fs::file_size(second, ec) == 3;
+  fs::remove_all(dir, ec);
   return ok;
 }
 bool TestSettings() {
@@ -12471,6 +12500,7 @@ int main() {
   failures += Check("Logger", TestLogger());
   failures += Check("Clock", TestClock());
   failures += Check("PathUtils", TestPath());
+  failures += Check("PathCopy", TestPathCopy());
   failures += Check("Settings", TestSettings());
   failures += Check("Profiler", TestProfile());
   failures += Check("Gamepad", TestGamepad());

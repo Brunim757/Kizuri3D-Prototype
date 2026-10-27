@@ -983,17 +983,13 @@ void EditorApp::DrawGenericComponent(Entity* e, const ComponentTypeDesc& desc) {
       if (ImGui::Button("Browse##browse")) {
         std::string picked;
         if (ShowOpenAudioDialog(window.NativeHandle(), picked)) {
-          std::error_code code;
           const std::string assetDir = ResolveAssetsDir();
-          std::filesystem::create_directories(std::filesystem::path(assetDir) / "Audio", code);
-          const std::string relative = "Audio/" + std::filesystem::path(picked).filename().string();
-          const std::string destination = (std::filesystem::path(assetDir) / relative).string();
-          std::filesystem::copy_file(picked, destination, code);
-          if (code) {
-            Announce(LogLevel::Error, std::string("Could not copy audio clip: ") + picked);
-          } else {
-            *value = relative;
+          std::string copied;
+          if (Path::CopyFileUnique(picked, (std::filesystem::path(assetDir) / "Audio").string(), copied)) {
+            *value = "Audio/" + std::filesystem::path(copied).filename().string();
             changed = true;
+          } else {
+            Announce(LogLevel::Error, std::string("Could not copy audio clip: ") + picked);
           }
         }
       }

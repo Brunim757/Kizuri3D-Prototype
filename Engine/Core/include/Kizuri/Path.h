@@ -10,6 +10,7 @@ std::string Parent(const std::string& path);
 std::string Combine(const std::string& dir, const std::string& name);
 std::string Normalize(const std::string& path);
 bool HasExtension(const std::string& path, const char* ext);
+bool CopyFileUnique(const std::string& source, const std::string& destinationDir, std::string& outPath);
 }
 namespace Str {
 void ToLowerInPlace(std::string& s);
