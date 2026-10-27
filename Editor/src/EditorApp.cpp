@@ -1099,15 +1099,48 @@ void EditorApp::EnsureDocked(const char* name, uint32_t nodeId) {
   ImGui::DockBuilderDockWindow(name, static_cast<ImGuiID>(nodeId));
 }
 void EditorApp::DrawToolbar() {
-  const float width = ImGui::GetWindowWidth();
-  ImGui::SameLine(width - 660.0f);
+  const ImGuiStyle& style = ImGui::GetStyle();
+  const float buttonPadding = style.FramePadding.x * 2.0f;
+  const float spacing = style.ItemSpacing.x;
+  const float separatorWidth = ImGui::CalcTextSize("|").x;
+  const auto buttonWidth = [buttonPadding](const char* label) {
+    return ImGui::CalcTextSize(label).x + buttonPadding;
+  };
+  float total = 0.0f;
+  int itemCount = 0;
+  const auto addWidth = [&total, &itemCount](float width) {
+    total += width;
+    ++itemCount;
+  };
+  if (!playActive) {
+    addWidth(buttonWidth("Play"));
+  } else {
+    addWidth(buttonWidth(playPaused ? "Resume" : "Pause"));
+    addWidth(buttonWidth("Stop"));
+  }
+  addWidth(separatorWidth);
+  addWidth(buttonWidth("Salvar"));
+  addWidth(buttonWidth("Desfazer"));
+  addWidth(buttonWidth("Refazer"));
+  addWidth(buttonWidth("Focar"));
+  addWidth(separatorWidth);
+  addWidth(buttonWidth("Duplicar"));
+  addWidth(buttonWidth("Excluir"));
+  total += spacing * static_cast<float>(itemCount - 1);
+  const float rightEdge = ImGui::GetWindowWidth() - style.WindowPadding.x;
+  float start = rightEdge - total;
+  const float minimum = ImGui::GetCursorPosX() + spacing;
+  if (start < minimum) {
+    start = minimum;
+  }
+  ImGui::SameLine(start);
   if (!playActive) {
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(30, 120, 72, 255));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(42, 150, 90, 255));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(22, 96, 58, 255));
-    const bool start = ImGui::Button("Play");
+    const bool startPlay = ImGui::Button("Play");
     ImGui::PopStyleColor(3);
-    if (start) {
+    if (startPlay) {
       StartPlay();
     }
   } else {
@@ -1124,7 +1157,8 @@ void EditorApp::DrawToolbar() {
       StopPlay();
     }
   }
-  ImGui::SameLine(width - 430.0f);
+  ImGui::SameLine();
+  ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted("|");
   ImGui::SameLine();
   if (ImGui::Button("Salvar")) {
@@ -1171,6 +1205,7 @@ void EditorApp::DrawToolbar() {
     ImGui::SetTooltip("Focar a selecao na camera");
   }
   ImGui::SameLine();
+  ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted("|");
   ImGui::SameLine();
   ImGui::BeginDisabled(selection.Count() == 0);
