@@ -12356,6 +12356,10 @@ bool TestMeshletsBackground() {
       grid.normals.push_back(1.0f);
       grid.uvs.push_back(static_cast<float>(x) / n);
       grid.uvs.push_back(static_cast<float>(y) / n);
+      grid.tangents.push_back(1.0f);
+      grid.tangents.push_back(0.0f);
+      grid.tangents.push_back(0.0f);
+      grid.tangents.push_back(1.0f);
     }
   }
   for (int y = 0; y < n; ++y) {
@@ -12406,7 +12410,6 @@ bool TestMeshletsBackground() {
   db.DrainBlocking();
   const Kizuri::MeshRecord* rec = db.GetByGuid(grid.guid);
   if (rec == nullptr || !rec->loaded || !rec->meshletsBuilt || rec->meshlets.size() < 2) {
-    std::printf("MeshletsBackground: rec=%d loaded=%d built=%d ranges=%zu\n", rec != nullptr ? 1 : 0, rec != nullptr && rec->loaded ? 1 : 0, rec != nullptr && rec->meshletsBuilt ? 1 : 0, rec != nullptr ? rec->meshlets.size() : 0);
     return fail();
   }
   size_t rangeTotal = 0;
@@ -12414,7 +12417,6 @@ bool TestMeshletsBackground() {
     rangeTotal += rec->meshlets[i].indexCount;
   }
   if (rangeTotal != rec->data.indices.size()) {
-    std::printf("MeshletsBackground: rangeTotal=%zu indices=%zu\n", rangeTotal, rec->data.indices.size());
     return fail();
   }
   size_t meshletCount = rec->meshlets.size();
@@ -12432,12 +12434,10 @@ bool TestMeshletsBackground() {
   }
   db.SetGpuRHI(rhi);
   if (!db.EnsureMeshGpu(grid.guid, 1048576)) {
-    std::printf("MeshletsBackground: EnsureMeshGpu failed\n");
     return fail();
   }
   rec = db.GetByGuid(grid.guid);
   if (rec == nullptr || !rec->gpuReady || rec->meshlets.size() != meshletCount || rec->gpuCount != rec->data.indices.size()) {
-    std::printf("MeshletsBackground: gpu rec=%d ready=%d ranges=%zu expectedRanges=%zu count=%u indices=%zu\n", rec != nullptr ? 1 : 0, rec != nullptr && rec->gpuReady ? 1 : 0, rec != nullptr ? rec->meshlets.size() : 0, meshletCount, rec != nullptr ? rec->gpuCount : 0, rec != nullptr ? rec->data.indices.size() : 0);
     return fail();
   }
   Kizuri::DestroyRHI(rhi);
