@@ -3021,7 +3021,7 @@ void EditorApp::DrawHierarchy() {
       ImGui::EndDragDropTarget();
     }
   }
-  if (ImGui::BeginPopupContextWindow("HierarchyContext")) {
+  if (ImGui::BeginPopupContextWindow("HierarchyContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
     ImGui::BeginDisabled(playActive);
     if (ImGui::MenuItem("Criar Entidade")) {
       CreateEntityAt(0.0f, 0.0f, 0.0f);
