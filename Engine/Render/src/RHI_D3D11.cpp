@@ -792,6 +792,11 @@ public:
     auto it = vsMap.find(vs);
     Ctx()->VSSetShader(it == vsMap.end() ? nullptr : it->second.Get(), nullptr, 0);
   }
+  void SetVertexSRV(uint32_t slot, RHIStructBuffer buf) override {
+    auto it = structBufs.find(buf);
+    ID3D11ShaderResourceView* v = (it == structBufs.end()) ? nullptr : it->second.srv.Get();
+    Ctx()->VSSetShaderResources(slot, 1, &v);
+  }
   RHIHullShader CreateHullShaderFromFile(const char* path, const char* entry) override {
     ComPtr<ID3DBlob> blob;
     if (!CompileShader(path, entry != nullptr ? entry : "main", "hs_5_0", blob)) {
@@ -957,6 +962,69 @@ public:
     }
     ComPtr<ID3D11InputLayout> layout;
     if (FAILED(device->CreateInputLayout(desc, 9, it->second->GetBufferPointer(), it->second->GetBufferSize(), layout.GetAddressOf()))) {
+      return 0;
+    }
+    uint64_t id = nextId++;
+    layouts[id] = layout;
+    return id;
+  }
+  RHIInputLayout CreateInputLayoutPNUTSkinned(RHIVertexShader vs) override {
+    auto it = vsBlobs.find(vs);
+    if (it == vsBlobs.end()) {
+      return 0;
+    }
+    D3D11_INPUT_ELEMENT_DESC desc[7];
+    desc[0].SemanticName = "POSITION";
+    desc[0].SemanticIndex = 0;
+    desc[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    desc[0].InputSlot = 0;
+    desc[0].AlignedByteOffset = 0;
+    desc[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    desc[0].InstanceDataStepRate = 0;
+    desc[1].SemanticName = "NORMAL";
+    desc[1].SemanticIndex = 0;
+    desc[1].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    desc[1].InputSlot = 0;
+    desc[1].AlignedByteOffset = 12;
+    desc[1].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    desc[1].InstanceDataStepRate = 0;
+    desc[2].SemanticName = "TEXCOORD";
+    desc[2].SemanticIndex = 0;
+    desc[2].Format = DXGI_FORMAT_R32G32_FLOAT;
+    desc[2].InputSlot = 0;
+    desc[2].AlignedByteOffset = 24;
+    desc[2].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    desc[2].InstanceDataStepRate = 0;
+    desc[3].SemanticName = "TANGENT";
+    desc[3].SemanticIndex = 0;
+    desc[3].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    desc[3].InputSlot = 0;
+    desc[3].AlignedByteOffset = 32;
+    desc[3].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    desc[3].InstanceDataStepRate = 0;
+    desc[4].SemanticName = "TEXCOORD";
+    desc[4].SemanticIndex = 1;
+    desc[4].Format = DXGI_FORMAT_R32G32_FLOAT;
+    desc[4].InputSlot = 0;
+    desc[4].AlignedByteOffset = 48;
+    desc[4].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    desc[4].InstanceDataStepRate = 0;
+    desc[5].SemanticName = "BLENDINDICES";
+    desc[5].SemanticIndex = 0;
+    desc[5].Format = DXGI_FORMAT_R32G32B32A32_UINT;
+    desc[5].InputSlot = 0;
+    desc[5].AlignedByteOffset = 56;
+    desc[5].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    desc[5].InstanceDataStepRate = 0;
+    desc[6].SemanticName = "BLENDWEIGHT";
+    desc[6].SemanticIndex = 0;
+    desc[6].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    desc[6].InputSlot = 0;
+    desc[6].AlignedByteOffset = 72;
+    desc[6].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    desc[6].InstanceDataStepRate = 0;
+    ComPtr<ID3D11InputLayout> layout;
+    if (FAILED(device->CreateInputLayout(desc, 7, it->second->GetBufferPointer(), it->second->GetBufferSize(), layout.GetAddressOf()))) {
       return 0;
     }
     uint64_t id = nextId++;

@@ -35,11 +35,19 @@ jobs:
         run: |
           $fxc = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter fxc.exe | Where-Object { $_.FullName -match "\\x64\\" } | Select-Object -First 1 -ExpandProperty FullName
           if (-not $fxc) { throw "fxc not found" }
+          $extraEntries = @{
+            "GeometryVS.hlsl" = @("main", "mainInst", "SkinnedMain")
+            "DepthVS.hlsl" = @("main", "SkinnedMain")
+            "UvVS.hlsl" = @("main", "SkinnedMain")
+          }
           $failed = $false
           Get-ChildItem "Shaders/*.hlsl" -Exclude "Fsr*" | ForEach-Object {
             $profile = if ($_.Name -match "VS\.hlsl$") { "vs_5_0" } elseif ($_.Name -match "HS\.hlsl$") { "hs_5_0" } elseif ($_.Name -match "DS\.hlsl$") { "ds_5_0" } elseif ($_.Name -match "CS\.hlsl$") { "cs_5_0" } else { "ps_5_0" }
-            & "$fxc" /nologo /T $profile /E main /I Shaders $_.FullName /Fo NUL
-            if ($LASTEXITCODE -ne 0) { Write-Host "::error::$($_.Name) failed to compile"; $failed = $true }
+            $entries = if ($extraEntries.ContainsKey($_.Name)) { $extraEntries[$_.Name] } else { @("main") }
+            foreach ($entry in $entries) {
+              & "$fxc" /nologo /T $profile /E $entry /I Shaders $_.FullName /Fo NUL
+              if ($LASTEXITCODE -ne 0) { Write-Host "::error::$($_.Name) entry $entry failed to compile"; $failed = $true }
+            }
           }
           if ($failed) { throw "shader validation failed" }
       - name: Configure

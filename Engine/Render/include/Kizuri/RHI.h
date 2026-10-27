@@ -121,6 +121,7 @@ public:
   virtual void UpdateConstantBuffer(RHIConstBuffer buf, const void* data, uint64_t size) = 0;
   virtual void DestroyConstantBuffer(RHIConstBuffer buf) = 0;
   virtual void SetVertexConstantBuffer(uint32_t slot, RHIConstBuffer buf) = 0;
+  virtual void SetVertexSRV(uint32_t slot, RHIStructBuffer buf) = 0;
   virtual void SetPixelConstantBuffer(uint32_t slot, RHIConstBuffer buf) = 0;
   virtual RHIVertexShader CreateVertexShaderFromFile(const char* path, const char* entry) = 0;
   virtual RHIPixelShader CreatePixelShaderFromFile(const char* path, const char* entry) = 0;
@@ -136,6 +137,7 @@ public:
   virtual void SetDomainSampler(uint32_t slot, RHISampler sampler) = 0;
   virtual RHIInputLayout CreateInputLayoutPNUT(RHIVertexShader vs) = 0;
   virtual RHIInputLayout CreateInputLayoutPNUTInstanced(RHIVertexShader vs) = 0;
+  virtual RHIInputLayout CreateInputLayoutPNUTSkinned(RHIVertexShader vs) = 0;
   virtual void SetInstanceBuffer(RHIBuffer buf) = 0;
   virtual void SetInputLayout(RHIInputLayout layout) = 0;
   virtual void SetViewport(const RHIViewport& vp) = 0;

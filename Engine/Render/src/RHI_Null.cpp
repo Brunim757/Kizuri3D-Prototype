@@ -240,6 +240,11 @@ public:
     (void)buf;
     Note(false);
   }
+  void SetVertexSRV(uint32_t slot, RHIStructBuffer buf) override {
+    (void)slot;
+    (void)buf;
+    Note(false);
+  }
   void SetPixelConstantBuffer(uint32_t slot, RHIConstBuffer buf) override {
     (void)slot;
     (void)buf;
@@ -324,6 +329,14 @@ public:
     return id;
   }
   RHIInputLayout CreateInputLayoutPNUTInstanced(RHIVertexShader vs) override {
+    if (vs == 0) {
+      return 0;
+    }
+    uint64_t id = nextId++;
+    shaders[id] = 1;
+    return id;
+  }
+  RHIInputLayout CreateInputLayoutPNUTSkinned(RHIVertexShader vs) override {
     if (vs == 0) {
       return 0;
     }
