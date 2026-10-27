@@ -32,6 +32,9 @@ bool GenerateLodMesh(const MeshAssetData& src, float targetRatio, float targetEr
   if (src.normals.size() != src.positions.size() || src.uvs.size() != vertexCount * 2) {
     return false;
   }
+  if (!src.skins.empty() || !src.partSkins.empty()) {
+    return false;
+  }
   if (targetRatio < 0.05f) {
     targetRatio = 0.05f;
   }

@@ -236,6 +236,65 @@ bool AppendMeshFlatBuffer(const MeshAssetData& data, size_t vertexCount, flatbuf
     fbInsts.push_back(gib.Finish());
   }
   auto fbInstsVec = builder.CreateVector(fbInsts);
+  std::vector<flatbuffers::Offset<KizuriAssets::Skin>> fbSkins;
+  for (size_t si = 0; si < data.skins.size(); ++si) {
+    const MeshSkinData& skin = data.skins[si];
+    std::vector<flatbuffers::Offset<KizuriAssets::SkinJoint>> fbJoints;
+    for (size_t ji = 0; ji < skin.joints.size(); ++ji) {
+      const MeshSkinJointData& joint = skin.joints[ji];
+      auto fbName = builder.CreateString(joint.name);
+      auto fbInverseBind = builder.CreateVector(joint.inverseBind, 16);
+      KizuriAssets::Vec3 bindTranslation(joint.bindTranslation[0], joint.bindTranslation[1], joint.bindTranslation[2]);
+      KizuriAssets::Vec4 bindRotation(joint.bindRotation[0], joint.bindRotation[1], joint.bindRotation[2], joint.bindRotation[3]);
+      KizuriAssets::Vec3 bindScale(joint.bindScale[0], joint.bindScale[1], joint.bindScale[2]);
+      KizuriAssets::SkinJointBuilder sjb(builder);
+      sjb.add_name(fbName);
+      sjb.add_parent(joint.parent);
+      sjb.add_bindTranslation(&bindTranslation);
+      sjb.add_bindRotation(&bindRotation);
+      sjb.add_bindScale(&bindScale);
+      sjb.add_inverseBind(fbInverseBind);
+      fbJoints.push_back(sjb.Finish());
+    }
+    auto fbJointsVec = builder.CreateVector(fbJoints);
+    KizuriAssets::SkinBuilder sb(builder);
+    sb.add_joints(fbJointsVec);
+    fbSkins.push_back(sb.Finish());
+  }
+  auto fbSkinsVec = builder.CreateVector(fbSkins);
+  std::vector<flatbuffers::Offset<KizuriAssets::AnimClip>> fbClips;
+  for (size_t ci = 0; ci < data.animations.size(); ++ci) {
+    const MeshAnimClipData& clip = data.animations[ci];
+    std::vector<flatbuffers::Offset<KizuriAssets::AnimChannel>> fbChannels;
+    for (size_t chi = 0; chi < clip.channels.size(); ++chi) {
+      const MeshAnimChannelData& channel = clip.channels[chi];
+      std::vector<KizuriAssets::AnimKey> fbKeys;
+      fbKeys.reserve(channel.keys.size());
+      for (size_t ki = 0; ki < channel.keys.size(); ++ki) {
+        const MeshAnimKeyData& key = channel.keys[ki];
+        fbKeys.push_back(KizuriAssets::AnimKey(key.time, key.value[0], key.value[1], key.value[2], key.value[3]));
+      }
+      auto fbKeysVec = builder.CreateVectorOfStructs(fbKeys);
+      KizuriAssets::AnimChannelBuilder acb(builder);
+      acb.add_skin(channel.skin);
+      acb.add_joint(channel.joint);
+      acb.add_path(channel.path);
+      acb.add_interpolation(channel.interpolation);
+      acb.add_keys(fbKeysVec);
+      fbChannels.push_back(acb.Finish());
+    }
+    auto fbChannelsVec = builder.CreateVector(fbChannels);
+    auto fbName = builder.CreateString(clip.name);
+    KizuriAssets::AnimClipBuilder acb(builder);
+    acb.add_name(fbName);
+    acb.add_duration(clip.duration);
+    acb.add_channels(fbChannelsVec);
+    fbClips.push_back(acb.Finish());
+  }
+  auto fbClipsVec = builder.CreateVector(fbClips);
+  auto fbPartSkinsVec = builder.CreateVector(data.partSkins);
+  auto fbSkinJointsVec = builder.CreateVector(data.skinJoints);
+  auto fbSkinWeightsVec = builder.CreateVector(data.skinWeights);
   KizuriAssets::MeshAssetBuilder mab(builder);
   mab.add_guid(fbGuid);
   mab.add_vertexData(fbVerts);
@@ -255,6 +314,11 @@ bool AppendMeshFlatBuffer(const MeshAssetData& data, size_t vertexCount, flatbuf
   mab.add_variantAssigns(fbVarAssignsVec);
   mab.add_lights(fbLightsVec);
   mab.add_gpuInstances(fbInstsVec);
+  mab.add_partSkins(fbPartSkinsVec);
+  mab.add_skinJoints(fbSkinJointsVec);
+  mab.add_skinWeights(fbSkinWeightsVec);
+  mab.add_skins(fbSkinsVec);
+  mab.add_animations(fbClipsVec);
   auto mesh = mab.Finish();
   builder.Finish(mesh);
   return true;
@@ -269,6 +333,157 @@ bool ValidateMeshData(const MeshAssetData& data, size_t& vertexCount) {
   }
   if (!data.uv2s.empty() && data.uv2s.size() != vertexCount * 2) {
     return false;
+  }
+  if (!data.partSkins.empty() && data.partSkins.size() != data.parts.size()) {
+    return false;
+  }
+  if (!data.skinJoints.empty() || !data.skinWeights.empty()) {
+    if (data.skinJoints.size() != vertexCount * 4 || data.skinWeights.size() != vertexCount * 4) {
+      return false;
+    }
+    if (data.skins.empty()) {
+      return false;
+    }
+  }
+  for (size_t i = 0; i < data.partSkins.size(); ++i) {
+    if (data.partSkins[i] != 0xFFFFFFFFu) {
+      if (data.skinJoints.empty() || data.skinWeights.empty()) {
+        return false;
+      }
+      if (static_cast<size_t>(data.partSkins[i]) >= data.skins.size()) {
+        return false;
+      }
+    }
+  }
+  for (size_t si = 0; si < data.skins.size(); ++si) {
+    const MeshSkinData& skin = data.skins[si];
+    if (skin.joints.empty()) {
+      return false;
+    }
+    for (size_t ji = 0; ji < skin.joints.size(); ++ji) {
+      const MeshSkinJointData& joint = skin.joints[ji];
+      if (joint.parent < -1 || joint.parent >= static_cast<int>(skin.joints.size()) || joint.parent == static_cast<int>(ji)) {
+        return false;
+      }
+      for (int k = 0; k < 3; ++k) {
+        if (!std::isfinite(joint.bindTranslation[k]) || !std::isfinite(joint.bindScale[k])) {
+          return false;
+        }
+      }
+      for (int k = 0; k < 4; ++k) {
+        if (!std::isfinite(joint.bindRotation[k])) {
+          return false;
+        }
+      }
+      float quatLength = joint.bindRotation[0] * joint.bindRotation[0] + joint.bindRotation[1] * joint.bindRotation[1] + joint.bindRotation[2] * joint.bindRotation[2] + joint.bindRotation[3] * joint.bindRotation[3];
+      if (quatLength < 1.0e-12f) {
+        return false;
+      }
+      for (int k = 0; k < 16; ++k) {
+        if (!std::isfinite(joint.inverseBind[k])) {
+          return false;
+        }
+      }
+    }
+    std::vector<unsigned char> state(skin.joints.size(), 0);
+    for (size_t ji = 0; ji < skin.joints.size(); ++ji) {
+      int current = static_cast<int>(ji);
+      while (current >= 0 && state[static_cast<size_t>(current)] == 0) {
+        state[static_cast<size_t>(current)] = 1;
+        current = skin.joints[static_cast<size_t>(current)].parent;
+      }
+      if (current >= 0 && state[static_cast<size_t>(current)] == 1) {
+        return false;
+      }
+      current = static_cast<int>(ji);
+      while (current >= 0 && state[static_cast<size_t>(current)] == 1) {
+        state[static_cast<size_t>(current)] = 2;
+        current = skin.joints[static_cast<size_t>(current)].parent;
+      }
+    }
+  }
+  if (!data.skinJoints.empty()) {
+    for (size_t vi = 0; vi < vertexCount; ++vi) {
+      float weightSum = 0.0f;
+      for (int k = 0; k < 4; ++k) {
+        float weight = data.skinWeights[vi * 4 + static_cast<size_t>(k)];
+        if (!std::isfinite(weight) || weight < 0.0f) {
+          return false;
+        }
+        weightSum += weight;
+      }
+      if (weightSum > 1.0f + 1.0e-3f) {
+        return false;
+      }
+    }
+    if (!data.partSkins.empty()) {
+      for (size_t pi = 0; pi < data.parts.size(); ++pi) {
+        if (data.partSkins[pi] == 0xFFFFFFFFu) {
+          continue;
+        }
+        const MeshSkinData& skin = data.skins[data.partSkins[pi]];
+        const MeshPartData& part = data.parts[pi];
+        if (static_cast<size_t>(part.indexOffset) + static_cast<size_t>(part.indexCount) > data.indices.size()) {
+          return false;
+        }
+        for (uint32_t k = 0; k < part.indexCount; ++k) {
+          uint32_t vi = data.indices[static_cast<size_t>(part.indexOffset) + k];
+          if (static_cast<size_t>(vi) >= vertexCount) {
+            return false;
+          }
+          float weightSum = 0.0f;
+          for (int j = 0; j < 4; ++j) {
+            if (static_cast<size_t>(data.skinJoints[static_cast<size_t>(vi) * 4 + static_cast<size_t>(j)]) >= skin.joints.size()) {
+              return false;
+            }
+            weightSum += data.skinWeights[static_cast<size_t>(vi) * 4 + static_cast<size_t>(j)];
+          }
+          if (weightSum < 1.0e-6f) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+  for (size_t ci = 0; ci < data.animations.size(); ++ci) {
+    const MeshAnimClipData& clip = data.animations[ci];
+    if (!std::isfinite(clip.duration) || clip.duration < 0.0f) {
+      return false;
+    }
+    for (size_t chi = 0; chi < clip.channels.size(); ++chi) {
+      const MeshAnimChannelData& channel = clip.channels[chi];
+      if (static_cast<size_t>(channel.skin) >= data.skins.size()) {
+        return false;
+      }
+      if (static_cast<size_t>(channel.joint) >= data.skins[channel.skin].joints.size()) {
+        return false;
+      }
+      if (channel.path < 0 || channel.path > 2 || channel.interpolation < 0 || channel.interpolation > 1) {
+        return false;
+      }
+      if (channel.keys.empty()) {
+        return false;
+      }
+      float previous = -1.0f;
+      for (size_t ki = 0; ki < channel.keys.size(); ++ki) {
+        const MeshAnimKeyData& key = channel.keys[ki];
+        if (!std::isfinite(key.time) || key.time < 0.0f || key.time <= previous) {
+          return false;
+        }
+        previous = key.time;
+        for (int k = 0; k < 4; ++k) {
+          if (!std::isfinite(key.value[k])) {
+            return false;
+          }
+        }
+        if (channel.path == 1) {
+          float quatLength = key.value[0] * key.value[0] + key.value[1] * key.value[1] + key.value[2] * key.value[2] + key.value[3] * key.value[3];
+          if (quatLength < 1.0e-12f) {
+            return false;
+          }
+        }
+      }
+    }
   }
   return true;
 }
@@ -518,6 +733,96 @@ bool DecodeMeshMemory(const void* bytes, size_t size, MeshAssetData& out) {
       out.gpuInstances.push_back(gi);
     }
   }
+  if (mesh->partSkins() != nullptr) {
+    for (uint32_t i = 0; i < mesh->partSkins()->size(); ++i) {
+      out.partSkins.push_back(mesh->partSkins()->Get(i));
+    }
+  }
+  if (mesh->skinJoints() != nullptr) {
+    for (uint32_t i = 0; i < mesh->skinJoints()->size(); ++i) {
+      out.skinJoints.push_back(mesh->skinJoints()->Get(i));
+    }
+  }
+  if (mesh->skinWeights() != nullptr) {
+    for (uint32_t i = 0; i < mesh->skinWeights()->size(); ++i) {
+      out.skinWeights.push_back(mesh->skinWeights()->Get(i));
+    }
+  }
+  if (mesh->skins() != nullptr) {
+    for (uint32_t i = 0; i < mesh->skins()->size(); ++i) {
+      const KizuriAssets::Skin* skin = mesh->skins()->Get(i);
+      MeshSkinData sd;
+      if (skin->joints() != nullptr) {
+        for (uint32_t ji = 0; ji < skin->joints()->size(); ++ji) {
+          const KizuriAssets::SkinJoint* j = skin->joints()->Get(ji);
+          MeshSkinJointData jd;
+          jd.name = j->name() != nullptr ? j->name()->str() : "";
+          jd.parent = j->parent();
+          if (j->bindTranslation() != nullptr) {
+            jd.bindTranslation[0] = j->bindTranslation()->x();
+            jd.bindTranslation[1] = j->bindTranslation()->y();
+            jd.bindTranslation[2] = j->bindTranslation()->z();
+          }
+          if (j->bindRotation() != nullptr) {
+            jd.bindRotation[0] = j->bindRotation()->x();
+            jd.bindRotation[1] = j->bindRotation()->y();
+            jd.bindRotation[2] = j->bindRotation()->z();
+            jd.bindRotation[3] = j->bindRotation()->w();
+          }
+          if (j->bindScale() != nullptr) {
+            jd.bindScale[0] = j->bindScale()->x();
+            jd.bindScale[1] = j->bindScale()->y();
+            jd.bindScale[2] = j->bindScale()->z();
+          }
+          if (j->inverseBind() != nullptr) {
+            uint32_t count = j->inverseBind()->size() < 16 ? j->inverseBind()->size() : 16;
+            for (uint32_t k = 0; k < count; ++k) {
+              jd.inverseBind[k] = j->inverseBind()->Get(k);
+            }
+          }
+          sd.joints.push_back(jd);
+        }
+      }
+      out.skins.push_back(sd);
+    }
+  }
+  if (mesh->animations() != nullptr) {
+    for (uint32_t i = 0; i < mesh->animations()->size(); ++i) {
+      const KizuriAssets::AnimClip* clip = mesh->animations()->Get(i);
+      MeshAnimClipData cd;
+      cd.name = clip->name() != nullptr ? clip->name()->str() : "";
+      cd.duration = clip->duration();
+      if (clip->channels() != nullptr) {
+        for (uint32_t chi = 0; chi < clip->channels()->size(); ++chi) {
+          const KizuriAssets::AnimChannel* channel = clip->channels()->Get(chi);
+          MeshAnimChannelData chd;
+          chd.skin = channel->skin();
+          chd.joint = channel->joint();
+          chd.path = channel->path();
+          chd.interpolation = channel->interpolation();
+          if (channel->keys() != nullptr) {
+            for (uint32_t ki = 0; ki < channel->keys()->size(); ++ki) {
+              const KizuriAssets::AnimKey* key = channel->keys()->Get(ki);
+              MeshAnimKeyData kd;
+              kd.time = key->time();
+              kd.value[0] = key->x();
+              kd.value[1] = key->y();
+              kd.value[2] = key->z();
+              kd.value[3] = key->w();
+              chd.keys.push_back(kd);
+            }
+          }
+          cd.channels.push_back(chd);
+        }
+      }
+      out.animations.push_back(cd);
+    }
+  }
+  size_t decodedVertexCount = 0;
+  if (!ValidateMeshData(out, decodedVertexCount)) {
+    out = MeshAssetData();
+    return false;
+  }
   return true;
 }
 bool EncodeMeshFile(const MeshAssetData& data, const std::string& path) {
@@ -615,6 +920,9 @@ bool BuildMergedMesh(const std::vector<StaticMergePart>& parts, MeshAssetData& o
   for (size_t i = 0; i < parts.size(); ++i) {
     const StaticMergePart& p = parts[i];
     if (p.data == nullptr || p.indexCount == 0 || p.indexCount % 3 != 0) {
+      return false;
+    }
+    if (!p.data->skins.empty() || !p.data->partSkins.empty()) {
       return false;
     }
     size_t vc = p.data->positions.size() / 3;
@@ -742,6 +1050,9 @@ bool BuildMergedMesh(const std::vector<StaticMergePart>& parts, MeshAssetData& o
 }
 bool BuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& outRanges) {
   outRanges.clear();
+  if (!data.skins.empty() || !data.partSkins.empty()) {
+    return false;
+  }
   size_t vcount = data.positions.size() / 3;
   if (vcount == 0 || data.indices.size() < 768 || data.indices.size() % 3 != 0) {
     return false;

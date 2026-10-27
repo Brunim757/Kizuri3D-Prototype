@@ -128,6 +128,9 @@ bool Clip::IsValid(const Skeleton& skeleton) const {
     if (channel.joint < 0 || channel.joint >= jointCount || channel.keys.empty()) {
       return false;
     }
+    if (channel.interpolation < 0 || channel.interpolation > 1) {
+      return false;
+    }
     float previous = -1.0f;
     for (size_t k = 0; k < channel.keys.size(); ++k) {
       const Key& key = channel.keys[k];
@@ -351,6 +354,21 @@ bool SampleClip(const Skeleton& skeleton, const Clip& clip, float time, Pose& ou
       blend = span > 0.0f ? (time - previous->time) / span : 0.0f;
     }
     JointPose& joint = out.joints[static_cast<size_t>(channel.joint)];
+    if (channel.interpolation == 1) {
+      if (channel.path == Path::Rotation) {
+        Copy4(previous->value, joint.rotation);
+        NormalizeQuat(joint.rotation);
+      } else if (channel.path == Path::Translation) {
+        joint.translation[0] = previous->value[0];
+        joint.translation[1] = previous->value[1];
+        joint.translation[2] = previous->value[2];
+      } else {
+        joint.scale[0] = previous->value[0];
+        joint.scale[1] = previous->value[1];
+        joint.scale[2] = previous->value[2];
+      }
+      continue;
+    }
     if (channel.path == Path::Rotation) {
       if (previous == next) {
         Copy4(previous->value, joint.rotation);
@@ -559,6 +577,27 @@ bool Animation_SelfTest() {
     return false;
   }
   if (!NearlyEqual(pose.joints[0].rotation[2], 0.38268343f, 1.0e-4f) || !NearlyEqual(pose.joints[1].translation[0], 2.0f, 1.0e-4f)) {
+    return false;
+  }
+  Clip stepClip;
+  Channel stepChannel;
+  stepChannel.joint = 1;
+  stepChannel.path = Path::Translation;
+  stepChannel.interpolation = 1;
+  Key step0;
+  step0.time = 0.0f;
+  step0.value[0] = 1.0f;
+  Key step1;
+  step1.time = 1.0f;
+  step1.value[0] = 3.0f;
+  stepChannel.keys.push_back(step0);
+  stepChannel.keys.push_back(step1);
+  stepClip.channels.push_back(stepChannel);
+  Pose stepPose;
+  if (!SampleClip(skeleton, stepClip, 0.5f, stepPose) || !NearlyEqual(stepPose.joints[1].translation[0], 1.0f, 1.0e-6f)) {
+    return false;
+  }
+  if (!SampleClip(skeleton, stepClip, 1.0f, stepPose) || !NearlyEqual(stepPose.joints[1].translation[0], 3.0f, 1.0e-6f)) {
     return false;
   }
   std::vector<float> matrices;

@@ -10265,6 +10265,178 @@ bool TestGltfUv2() {
   fs::remove_all(dir, ec);
   return true;
 }
+bool TestGltfSkin() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "kzgltfskin_test";
+  std::error_code ec;
+  fs::remove_all(dir, ec);
+  fs::create_directories(dir, ec);
+  auto fail = [&dir, &ec]() {
+    fs::remove_all(dir, ec);
+    return false;
+  };
+  float pos[9] = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f };
+  unsigned char joints[12] = { 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0 };
+  float weights[12] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f };
+  uint16_t idx[3] = { 0, 1, 2 };
+  float ibm[32] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                    1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f };
+  float times[2] = { 0.0f, 1.0f };
+  float values[6] = { 1.0f, 0.0f, 0.0f, 1.0f, 2.0f, 0.0f };
+  float uv2[6] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  {
+    FILE* fp = std::fopen((dir / "skin.bin").string().c_str(), "wb");
+    std::fwrite(pos, 1, sizeof(pos), fp);
+    std::fwrite(joints, 1, sizeof(joints), fp);
+    std::fwrite(weights, 1, sizeof(weights), fp);
+    std::fwrite(idx, 1, sizeof(idx), fp);
+    unsigned char pad[2] = { 0, 0 };
+    std::fwrite(pad, 1, sizeof(pad), fp);
+    std::fwrite(ibm, 1, sizeof(ibm), fp);
+    std::fwrite(times, 1, sizeof(times), fp);
+    std::fwrite(values, 1, sizeof(values), fp);
+    std::fwrite(uv2, 1, sizeof(uv2), fp);
+    std::fclose(fp);
+  }
+  std::string gltf = R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0,2]}],"nodes":[{"name":"root","children":[1]},{"name":"child","translation":[1,0,0]},{"name":"mesh","mesh":0,"skin":0}],"skins":[{"name":"rig","joints":[0,1],"inverseBindMatrices":4}],"meshes":[{"primitives":[{"attributes":{"POSITION":0,"JOINTS_0":1,"WEIGHTS_0":2,"TEXCOORD_1":7},"indices":3,"material":0}]}],"materials":[{"name":"SkinMat"}],"animations":[{"name":"walk","channels":[{"sampler":0,"target":{"node":1,"path":"translation"}}],"samplers":[{"input":5,"output":6,"interpolation":"LINEAR"}]}],"buffers":[{"uri":"skin.bin","byteLength":288}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36,"target":34962},{"buffer":0,"byteOffset":36,"byteLength":12,"target":34962},{"buffer":0,"byteOffset":48,"byteLength":48,"target":34962},{"buffer":0,"byteOffset":96,"byteLength":6,"target":34963},{"buffer":0,"byteOffset":104,"byteLength":128},{"buffer":0,"byteOffset":232,"byteLength":8},{"buffer":0,"byteOffset":240,"byteLength":24},{"buffer":0,"byteOffset":264,"byteLength":24,"target":34962}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},{"bufferView":1,"componentType":5121,"count":3,"type":"VEC4"},{"bufferView":2,"componentType":5126,"count":3,"type":"VEC4"},{"bufferView":3,"componentType":5123,"count":3,"type":"SCALAR"},{"bufferView":4,"componentType":5126,"count":2,"type":"MAT4"},{"bufferView":5,"componentType":5126,"count":2,"type":"SCALAR","min":[0],"max":[1]},{"bufferView":6,"componentType":5126,"count":2,"type":"VEC3"},{"bufferView":7,"componentType":5126,"count":3,"type":"VEC2"}]})";
+  {
+    FILE* fp = std::fopen((dir / "skin.gltf").string().c_str(), "wb");
+    std::fwrite(gltf.c_str(), 1, gltf.size(), fp);
+    std::fclose(fp);
+  }
+  Kizuri::MeshAssetData data;
+  if (!Kizuri::ImportGltfMesh((dir / "skin.gltf").string(), "", data, nullptr)) {
+    return fail();
+  }
+  if (data.skins.size() != 1 || data.skins[0].joints.size() != 2) {
+    return fail();
+  }
+  const Kizuri::MeshSkinData& skin = data.skins[0];
+  if (skin.joints[0].parent != -1 || skin.joints[1].parent != 0) {
+    return fail();
+  }
+  if (skin.joints[1].bindTranslation[0] != 1.0f || skin.joints[1].bindTranslation[1] != 0.0f || skin.joints[1].bindTranslation[2] != 0.0f) {
+    return fail();
+  }
+  if (skin.joints[0].inverseBind[12] != 0.0f || skin.joints[1].inverseBind[12] != -1.0f || skin.joints[1].inverseBind[13] != 0.0f) {
+    return fail();
+  }
+  if (data.parts.size() != 1 || data.partSkins.size() != 1 || data.partSkins[0] != 0) {
+    return fail();
+  }
+  if (data.skinJoints.size() != 12 || data.skinWeights.size() != 12) {
+    return fail();
+  }
+  const uint32_t expectedJoints[12] = { 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0 };
+  const float expectedWeights[12] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f };
+  for (int i = 0; i < 12; ++i) {
+    if (data.skinJoints[i] != expectedJoints[i] || std::fabs(data.skinWeights[i] - expectedWeights[i]) > 1e-6f) {
+      return fail();
+    }
+  }
+  if (data.positions.size() != 9 || data.positions[3] != 1.0f || data.positions[7] != 1.0f || data.positions[8] != 0.0f) {
+    return fail();
+  }
+  if (data.animations.size() != 1) {
+    return fail();
+  }
+  const Kizuri::MeshAnimClipData& clip = data.animations[0];
+  if (clip.name != "walk" || clip.duration != 1.0f || clip.channels.size() != 1) {
+    return fail();
+  }
+  const Kizuri::MeshAnimChannelData& channel = clip.channels[0];
+  if (channel.skin != 0 || channel.joint != 1 || channel.path != 0 || channel.interpolation != 0 || channel.keys.size() != 2) {
+    return fail();
+  }
+  if (channel.keys[0].time != 0.0f || channel.keys[1].time != 1.0f) {
+    return fail();
+  }
+  if (channel.keys[0].value[0] != 1.0f || channel.keys[0].value[1] != 0.0f || channel.keys[1].value[0] != 1.0f || channel.keys[1].value[1] != 2.0f) {
+    return fail();
+  }
+  std::vector<unsigned char> bytes;
+  if (!Kizuri::EncodeMeshMemory(data, bytes) || bytes.empty()) {
+    return fail();
+  }
+  Kizuri::MeshAssetData round;
+  if (!Kizuri::DecodeMeshMemory(bytes.data(), bytes.size(), round)) {
+    return fail();
+  }
+  if (round.parts.size() != 1 || round.partSkins.size() != 1 || round.partSkins[0] != 0 || round.skins.size() != 1 || round.skins[0].joints.size() != 2) {
+    return fail();
+  }
+  if (round.skinJoints.size() != 12 || round.skinWeights.size() != 12) {
+    return fail();
+  }
+  if (round.skins[0].joints[1].bindTranslation[0] != 1.0f || round.skins[0].joints[1].inverseBind[12] != -1.0f) {
+    return fail();
+  }
+  if (round.animations.size() != 1 || round.animations[0].channels.size() != 1 || round.animations[0].channels[0].keys.size() != 2) {
+    return fail();
+  }
+  if (round.animations[0].channels[0].keys[1].value[1] != 2.0f) {
+    return fail();
+  }
+  Kizuri::MeshAssetData lod;
+  if (Kizuri::GenerateLodMesh(data, 0.5f, 0.1f, lod)) {
+    return fail();
+  }
+  std::vector<Kizuri::StaticMergePart> mergeParts(1);
+  mergeParts[0].data = &data;
+  mergeParts[0].indexOffset = 0;
+  mergeParts[0].indexCount = static_cast<uint32_t>(data.indices.size());
+  Kizuri::MeshAssetData merged;
+  if (Kizuri::BuildMergedMesh(mergeParts, merged)) {
+    return fail();
+  }
+  std::vector<float> uPos = { 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0 };
+  std::vector<float> uNrm = { 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1 };
+  std::vector<float> uUv = { 0, 0, 1, 0, 1, 1, 0, 1 };
+  std::vector<float> uTan;
+  if (!Kizuri::GenerateTangents(uPos, uNrm, uUv, std::vector<uint32_t>{ 0, 1, 2, 0, 2, 3 }, uTan)) {
+    return fail();
+  }
+  std::vector<uint32_t> uJoints = { 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
+  std::vector<float> uWeights = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.75f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f };
+  std::vector<float> oPos;
+  std::vector<float> oNrm;
+  std::vector<float> oUv;
+  std::vector<float> oTan;
+  std::vector<uint32_t> oIdx;
+  std::vector<float> oUv2;
+  std::vector<uint32_t> oJoints;
+  std::vector<float> oWeights;
+  if (!Kizuri::UnwrapPrim(uPos, uNrm, uUv, uTan, std::vector<uint32_t>{ 0, 1, 2, 0, 2, 3 }, oPos, oNrm, oUv, oTan, oIdx, oUv2, &uJoints, &uWeights, &oJoints, &oWeights)) {
+    return fail();
+  }
+  if (oPos.empty() || oJoints.size() != oPos.size() / 3 * 4 || oWeights.size() != oJoints.size()) {
+    return fail();
+  }
+  for (size_t i = 0; i < oPos.size() / 3; ++i) {
+    float x = oPos[i * 3 + 0];
+    float y = oPos[i * 3 + 1];
+    int src = -1;
+    if (std::fabs(x) < 1e-6f && std::fabs(y) < 1e-6f) {
+      src = 0;
+    } else if (std::fabs(x - 1.0f) < 1e-6f && std::fabs(y) < 1e-6f) {
+      src = 1;
+    } else if (std::fabs(x - 1.0f) < 1e-6f && std::fabs(y - 1.0f) < 1e-6f) {
+      src = 2;
+    } else if (std::fabs(x) < 1e-6f && std::fabs(y - 1.0f) < 1e-6f) {
+      src = 3;
+    }
+    if (src < 0) {
+      return fail();
+    }
+    for (int k = 0; k < 4; ++k) {
+      if (oJoints[i * 4 + static_cast<size_t>(k)] != uJoints[static_cast<size_t>(src) * 4 + static_cast<size_t>(k)] || std::fabs(oWeights[i * 4 + static_cast<size_t>(k)] - uWeights[static_cast<size_t>(src) * 4 + static_cast<size_t>(k)]) > 1e-6f) {
+        return fail();
+      }
+    }
+  }
+  fs::remove_all(dir, ec);
+  return true;
+}
 bool TestGltfTextured() {
   namespace fs = std::filesystem;
   fs::path dir = fs::temp_directory_path() / "kzgltftex_test";
@@ -12671,6 +12843,7 @@ int main() {
   failures += Check("GltfTextured", TestGltfTextured());
   failures += Check("UnwrapUV2", TestUnwrapUV2());
   failures += Check("GltfUv2", TestGltfUv2());
+  failures += Check("GltfSkin", TestGltfSkin());
   failures += Check("GltfMaterialIndex", TestGltfMaterialIndex());
   failures += Check("GltfNodeTransform", TestGltfNodeTransform());
   failures += Check("GltfQuantized", TestGltfQuantized());

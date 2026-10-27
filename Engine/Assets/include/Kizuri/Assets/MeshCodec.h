@@ -85,6 +85,33 @@ struct MeshGpuInstance {
   uint32_t mesh;
   std::vector<float> matrices;
 };
+struct MeshSkinJointData {
+  std::string name;
+  int parent = -1;
+  float bindTranslation[3] = { 0.0f, 0.0f, 0.0f };
+  float bindRotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+  float bindScale[3] = { 1.0f, 1.0f, 1.0f };
+  float inverseBind[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+};
+struct MeshSkinData {
+  std::vector<MeshSkinJointData> joints;
+};
+struct MeshAnimKeyData {
+  float time = 0.0f;
+  float value[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+};
+struct MeshAnimChannelData {
+  uint32_t skin = 0;
+  uint32_t joint = 0;
+  int path = 0;
+  int interpolation = 0;
+  std::vector<MeshAnimKeyData> keys;
+};
+struct MeshAnimClipData {
+  std::string name;
+  float duration = 0.0f;
+  std::vector<MeshAnimChannelData> channels;
+};
 struct MeshAssetData {
   std::string guid;
   std::vector<float> positions;
@@ -105,6 +132,11 @@ struct MeshAssetData {
   std::vector<MeshVariantAssign> variantAssigns;
   std::vector<MeshLightData> lights;
   std::vector<MeshGpuInstance> gpuInstances;
+  std::vector<uint32_t> partSkins;
+  std::vector<uint32_t> skinJoints;
+  std::vector<float> skinWeights;
+  std::vector<MeshSkinData> skins;
+  std::vector<MeshAnimClipData> animations;
 };
 bool EncodeMeshFile(const MeshAssetData& data, const std::string& path);
 bool DecodeMeshFile(const std::string& path, MeshAssetData& out);
@@ -137,5 +169,5 @@ struct StaticMergePart {
   float world[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 };
 bool BuildMergedMesh(const std::vector<StaticMergePart>& parts, MeshAssetData& out);
-bool UnwrapPrim(const std::vector<float>& inPos, const std::vector<float>& inNrm, const std::vector<float>& inUv, const std::vector<float>& inTan, const std::vector<uint32_t>& inIdx, std::vector<float>& outPos, std::vector<float>& outNrm, std::vector<float>& outUv, std::vector<float>& outTan, std::vector<uint32_t>& outIdx, std::vector<float>& outUv2);
+bool UnwrapPrim(const std::vector<float>& inPos, const std::vector<float>& inNrm, const std::vector<float>& inUv, const std::vector<float>& inTan, const std::vector<uint32_t>& inIdx, std::vector<float>& outPos, std::vector<float>& outNrm, std::vector<float>& outUv, std::vector<float>& outTan, std::vector<uint32_t>& outIdx, std::vector<float>& outUv2, const std::vector<uint32_t>* inJoints = nullptr, const std::vector<float>* inWeights = nullptr, std::vector<uint32_t>* outJoints = nullptr, std::vector<float>* outWeights = nullptr);
 }

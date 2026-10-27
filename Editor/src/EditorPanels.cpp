@@ -404,6 +404,9 @@ std::unordered_set<EntityId, EntityIdHash> EditorApp::SubmitStaticBatches(const 
     if (rec == nullptr || !rec->loaded) {
       continue;
     }
+    if (!rec->data.skins.empty() || !rec->data.partSkins.empty()) {
+      continue;
+    }
     keyH = StaticMixHash(keyH, &e->id.index, sizeof(e->id.index));
     keyH = StaticMixHash(keyH, &e->id.generation, sizeof(e->id.generation));
     keyH = StaticMixHash(keyH, world, sizeof(world));

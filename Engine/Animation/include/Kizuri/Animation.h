@@ -40,6 +40,7 @@ struct Key {
 struct Channel {
   int joint = -1;
   Path path = Path::Translation;
+  int interpolation = 0;
   std::vector<Key> keys;
 };
 struct Clip {

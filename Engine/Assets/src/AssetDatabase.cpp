@@ -307,6 +307,9 @@ void AssetDatabase::EnqueueLodBake(const MeshAssetData& baseData, const std::str
   if (!jobsReady) {
     return;
   }
+  if (!baseData.skins.empty() || !baseData.partSkins.empty()) {
+    return;
+  }
   TaskPtr<LodBakeTask> task = MakeTask<LodBakeTask>();
   if (task == nullptr) { return; }
   task->baseData = baseData;

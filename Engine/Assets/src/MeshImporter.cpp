@@ -8,12 +8,17 @@
 #include "Kizuri/Log.h"
 #include <cgltf.h>
 #include <meshoptimizer.h>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <system_error>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 namespace Kizuri {
 namespace {
@@ -212,8 +217,6 @@ bool ReadVec4(const cgltf_accessor* acc, size_t idx, float* v) {
   if (base == nullptr) {
     return false;
   }
-  size_t stride = acc->stride != 0 ? acc->stride : 16;
-  const unsigned char* e = base + acc->offset + idx * stride;
   size_t comp = 0;
   switch (acc->component_type) {
     case cgltf_component_type_r_32f: comp = 4; break;
@@ -221,6 +224,8 @@ bool ReadVec4(const cgltf_accessor* acc, size_t idx, float* v) {
     case cgltf_component_type_r_8u: case cgltf_component_type_r_8: comp = 1; break;
     default: return false;
   }
+  size_t stride = acc->stride != 0 ? acc->stride : comp * 4;
+  const unsigned char* e = base + acc->offset + idx * stride;
   for (int c = 0; c < 4; ++c) {
     if (!ReadFloatComp(e + c * comp, acc->component_type, acc->normalized != 0, v[c])) {
       return false;
@@ -808,6 +813,465 @@ void MulMat4(const float a[16], const float b[16], float out[16]) {
     out[k] = r[k];
   }
 }
+const float kMatrixEpsilon = 1.0e-8f;
+void MirrorZMatrix(float m[16]) {
+  m[2] = -m[2];
+  m[6] = -m[6];
+  m[8] = -m[8];
+  m[9] = -m[9];
+  m[11] = -m[11];
+  m[14] = -m[14];
+}
+void MirrorZTranslation(float t[3]) {
+  t[2] = -t[2];
+}
+void MirrorZQuat(float q[4]) {
+  q[0] = -q[0];
+  q[1] = -q[1];
+}
+float Dot3(const float a[3], const float b[3]) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+bool InvertMat4(const float in[16], float out[16]) {
+  float inv[16];
+  inv[0] = in[5] * in[10] * in[15] - in[5] * in[11] * in[14] - in[9] * in[6] * in[15] + in[9] * in[7] * in[14] + in[13] * in[6] * in[11] - in[13] * in[7] * in[10];
+  inv[4] = -in[4] * in[10] * in[15] + in[4] * in[11] * in[14] + in[8] * in[6] * in[15] - in[8] * in[7] * in[14] - in[12] * in[6] * in[11] + in[12] * in[7] * in[10];
+  inv[8] = in[4] * in[9] * in[15] - in[4] * in[11] * in[13] - in[8] * in[5] * in[15] + in[8] * in[7] * in[13] + in[12] * in[5] * in[11] - in[12] * in[7] * in[9];
+  inv[12] = -in[4] * in[9] * in[14] + in[4] * in[10] * in[13] + in[8] * in[5] * in[14] - in[8] * in[6] * in[13] - in[12] * in[5] * in[10] + in[12] * in[6] * in[9];
+  inv[1] = -in[1] * in[10] * in[15] + in[1] * in[11] * in[14] + in[9] * in[2] * in[15] - in[9] * in[3] * in[14] - in[13] * in[2] * in[11] + in[13] * in[3] * in[10];
+  inv[5] = in[0] * in[10] * in[15] - in[0] * in[11] * in[14] - in[8] * in[2] * in[15] + in[8] * in[3] * in[14] + in[12] * in[2] * in[11] - in[12] * in[3] * in[10];
+  inv[9] = -in[0] * in[9] * in[15] + in[0] * in[11] * in[13] + in[8] * in[1] * in[15] - in[8] * in[3] * in[13] - in[12] * in[1] * in[11] + in[12] * in[3] * in[9];
+  inv[13] = in[0] * in[9] * in[14] - in[0] * in[10] * in[13] - in[8] * in[1] * in[14] + in[8] * in[2] * in[13] + in[12] * in[1] * in[10] - in[12] * in[2] * in[9];
+  inv[2] = in[1] * in[6] * in[15] - in[1] * in[7] * in[14] - in[5] * in[2] * in[15] + in[5] * in[3] * in[14] + in[13] * in[2] * in[7] - in[13] * in[3] * in[6];
+  inv[6] = -in[0] * in[6] * in[15] + in[0] * in[7] * in[14] + in[4] * in[2] * in[15] - in[4] * in[3] * in[14] - in[12] * in[2] * in[7] + in[12] * in[3] * in[6];
+  inv[10] = in[0] * in[5] * in[15] - in[0] * in[7] * in[13] - in[4] * in[1] * in[15] + in[4] * in[3] * in[13] + in[12] * in[1] * in[7] - in[12] * in[3] * in[5];
+  inv[14] = -in[0] * in[5] * in[14] + in[0] * in[6] * in[13] + in[4] * in[1] * in[14] - in[4] * in[2] * in[13] - in[12] * in[1] * in[6] + in[12] * in[2] * in[5];
+  inv[3] = -in[1] * in[6] * in[11] + in[1] * in[7] * in[10] + in[5] * in[2] * in[11] - in[5] * in[3] * in[10] - in[9] * in[2] * in[7] + in[9] * in[3] * in[6];
+  inv[7] = in[0] * in[6] * in[11] - in[0] * in[7] * in[10] - in[4] * in[2] * in[11] + in[4] * in[3] * in[10] + in[8] * in[2] * in[7] - in[8] * in[3] * in[6];
+  inv[11] = -in[0] * in[5] * in[11] + in[0] * in[7] * in[9] + in[4] * in[1] * in[11] - in[4] * in[3] * in[9] - in[8] * in[1] * in[7] + in[8] * in[3] * in[5];
+  inv[15] = in[0] * in[5] * in[10] - in[0] * in[6] * in[9] - in[4] * in[1] * in[10] + in[4] * in[2] * in[9] + in[8] * in[1] * in[6] - in[8] * in[2] * in[5];
+  float det = in[0] * inv[0] + in[1] * inv[4] + in[2] * inv[8] + in[3] * inv[12];
+  if (!std::isfinite(det) || std::fabs(det) < 1.0e-12f) {
+    return false;
+  }
+  float invDet = 1.0f / det;
+  for (int i = 0; i < 16; ++i) {
+    out[i] = inv[i] * invDet;
+  }
+  return true;
+}
+void NormalizeQuat4(float q[4]) {
+  float length = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+  if (!std::isfinite(length) || length < 1.0e-12f) {
+    q[0] = 0.0f;
+    q[1] = 0.0f;
+    q[2] = 0.0f;
+    q[3] = 1.0f;
+    return;
+  }
+  float inv = 1.0f / length;
+  q[0] *= inv;
+  q[1] *= inv;
+  q[2] *= inv;
+  q[3] *= inv;
+}
+void QuatFromRows(const float r0[3], const float r1[3], const float r2[3], float q[4]) {
+  float m00 = r0[0];
+  float m01 = r0[1];
+  float m02 = r0[2];
+  float m10 = r1[0];
+  float m11 = r1[1];
+  float m12 = r1[2];
+  float m20 = r2[0];
+  float m21 = r2[1];
+  float m22 = r2[2];
+  float trace = m00 + m11 + m22;
+  if (trace > 0.0f) {
+    float root = std::sqrt(trace + 1.0f);
+    float inv = 0.5f / root;
+    q[3] = 0.5f * root;
+    q[0] = (m12 - m21) * inv;
+    q[1] = (m20 - m02) * inv;
+    q[2] = (m01 - m10) * inv;
+  } else if (m00 > m11 && m00 > m22) {
+    float root = std::sqrt(1.0f + m00 - m11 - m22);
+    float inv = 0.5f / root;
+    q[0] = 0.5f * root;
+    q[3] = (m12 - m21) * inv;
+    q[1] = (m10 + m01) * inv;
+    q[2] = (m20 + m02) * inv;
+  } else if (m11 > m22) {
+    float root = std::sqrt(1.0f + m11 - m00 - m22);
+    float inv = 0.5f / root;
+    q[1] = 0.5f * root;
+    q[3] = (m20 - m02) * inv;
+    q[0] = (m10 + m01) * inv;
+    q[2] = (m21 + m12) * inv;
+  } else {
+    float root = std::sqrt(1.0f + m22 - m00 - m11);
+    float inv = 0.5f / root;
+    q[2] = 0.5f * root;
+    q[3] = (m01 - m10) * inv;
+    q[0] = (m20 + m02) * inv;
+    q[1] = (m21 + m12) * inv;
+  }
+  NormalizeQuat4(q);
+}
+bool DecomposeTRS(const float m[16], float t[3], float q[4], float s[3]) {
+  t[0] = m[12];
+  t[1] = m[13];
+  t[2] = m[14];
+  float r0[3] = { m[0], m[1], m[2] };
+  float r1[3] = { m[4], m[5], m[6] };
+  float r2[3] = { m[8], m[9], m[10] };
+  float sx = std::sqrt(Dot3(r0, r0));
+  float sy = std::sqrt(Dot3(r1, r1));
+  float sz = std::sqrt(Dot3(r2, r2));
+  if (!std::isfinite(sx) || !std::isfinite(sy) || !std::isfinite(sz) || sx < kMatrixEpsilon || sy < kMatrixEpsilon || sz < kMatrixEpsilon) {
+    return false;
+  }
+  float det = r0[0] * (r1[1] * r2[2] - r1[2] * r2[1]) - r0[1] * (r1[0] * r2[2] - r1[2] * r2[0]) + r0[2] * (r1[0] * r2[1] - r1[1] * r2[0]);
+  if (det < 0.0f) {
+    sx = -sx;
+  }
+  s[0] = sx;
+  s[1] = sy;
+  s[2] = sz;
+  for (int c = 0; c < 3; ++c) {
+    r0[c] /= sx;
+    r1[c] /= sy;
+    r2[c] /= sz;
+  }
+  QuatFromRows(r0, r1, r2, q);
+  return true;
+}
+struct SkinBuild {
+  MeshSkinData data;
+  std::vector<uint32_t> jointRemap;
+  std::unordered_map<const cgltf_node*, uint32_t> nodeToJoint;
+};
+bool BuildSkin(const cgltf_data* data, const cgltf_skin* skin, const std::vector<float>& nodeWorld, SkinBuild& out) {
+  out = SkinBuild();
+  if (data == nullptr || skin == nullptr || skin->joints == nullptr || skin->joints_count == 0) {
+    return false;
+  }
+  if (skin->inverse_bind_matrices != nullptr && skin->inverse_bind_matrices->count < skin->joints_count) {
+    return false;
+  }
+  std::unordered_map<const cgltf_node*, uint32_t> gltfJointIndex;
+  std::unordered_set<const cgltf_node*> included;
+  for (size_t i = 0; i < skin->joints_count; ++i) {
+    const cgltf_node* node = skin->joints[i];
+    if (node == nullptr || gltfJointIndex.find(node) != gltfJointIndex.end()) {
+      return false;
+    }
+    gltfJointIndex[node] = static_cast<uint32_t>(i);
+    const cgltf_node* current = node;
+    while (current != nullptr) {
+      if (!included.insert(current).second) {
+        break;
+      }
+      current = current->parent;
+    }
+  }
+  std::vector<const cgltf_node*> nodes(included.begin(), included.end());
+  std::sort(nodes.begin(), nodes.end(), [data](const cgltf_node* a, const cgltf_node* b) {
+    return (a - data->nodes) < (b - data->nodes);
+  });
+  out.nodeToJoint.reserve(nodes.size());
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    out.nodeToJoint[nodes[i]] = static_cast<uint32_t>(i);
+  }
+  out.jointRemap.assign(skin->joints_count, 0);
+  out.data.joints.reserve(nodes.size());
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    const cgltf_node* node = nodes[i];
+    MeshSkinJointData joint;
+    joint.name = node->name != nullptr ? node->name : ("joint_" + std::to_string(i));
+    joint.parent = -1;
+    if (node->parent != nullptr) {
+      std::unordered_map<const cgltf_node*, uint32_t>::const_iterator parentIt = out.nodeToJoint.find(node->parent);
+      if (parentIt != out.nodeToJoint.end()) {
+        joint.parent = static_cast<int>(parentIt->second);
+      }
+    }
+    float local[16];
+    cgltf_node_transform_local(node, local);
+    float t[3];
+    float q[4];
+    float s[3];
+    if (!DecomposeTRS(local, t, q, s)) {
+      return false;
+    }
+    MirrorZTranslation(t);
+    MirrorZQuat(q);
+    joint.bindTranslation[0] = t[0];
+    joint.bindTranslation[1] = t[1];
+    joint.bindTranslation[2] = t[2];
+    joint.bindRotation[0] = q[0];
+    joint.bindRotation[1] = q[1];
+    joint.bindRotation[2] = q[2];
+    joint.bindRotation[3] = q[3];
+    joint.bindScale[0] = s[0];
+    joint.bindScale[1] = s[1];
+    joint.bindScale[2] = s[2];
+    std::unordered_map<const cgltf_node*, uint32_t>::const_iterator gltfIt = gltfJointIndex.find(node);
+    if (gltfIt != gltfJointIndex.end()) {
+      float inverseBind[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+      if (skin->inverse_bind_matrices != nullptr && !cgltf_accessor_read_float(skin->inverse_bind_matrices, gltfIt->second, inverseBind, 16)) {
+        return false;
+      }
+      MirrorZMatrix(inverseBind);
+      std::memcpy(joint.inverseBind, inverseBind, sizeof(inverseBind));
+      out.jointRemap[gltfIt->second] = static_cast<uint32_t>(i);
+    } else {
+      size_t nodeIndex = static_cast<size_t>(node - data->nodes);
+      float inverseWorld[16];
+      if (!InvertMat4(&nodeWorld[nodeIndex * 16], inverseWorld)) {
+        return false;
+      }
+      MirrorZMatrix(inverseWorld);
+      std::memcpy(joint.inverseBind, inverseWorld, sizeof(inverseWorld));
+    }
+    out.data.joints.push_back(joint);
+  }
+  return true;
+}
+float CubicHermite(float v0, float outTangent0, float v1, float inTangent1, float dt, float s) {
+  float s2 = s * s;
+  float s3 = s2 * s;
+  float h00 = 2.0f * s3 - 3.0f * s2 + 1.0f;
+  float h10 = s3 - 2.0f * s2 + s;
+  float h01 = -2.0f * s3 + 3.0f * s2;
+  float h11 = s3 - s2;
+  return h00 * v0 + h10 * dt * outTangent0 + h01 * v1 + h11 * dt * inTangent1;
+}
+bool BuildChannelKeys(const cgltf_accessor* input, const cgltf_accessor* output, int path, int interpolation, std::vector<MeshAnimKeyData>& keys) {
+  keys.clear();
+  if (input == nullptr || output == nullptr || input->count == 0) {
+    return false;
+  }
+  size_t count = input->count;
+  size_t comps = path == 1 ? 4 : 3;
+  std::vector<float> times(count);
+  for (size_t i = 0; i < count; ++i) {
+    if (!cgltf_accessor_read_float(input, i, &times[i], 1)) {
+      return false;
+    }
+    if (!std::isfinite(times[i]) || times[i] < 0.0f) {
+      return false;
+    }
+    if (i > 0 && times[i] <= times[i - 1]) {
+      return false;
+    }
+  }
+  if (interpolation == 2) {
+    if (output->count != count * 3) {
+      return false;
+    }
+    std::vector<float> values(count * 3 * comps);
+    for (size_t i = 0; i < count * 3; ++i) {
+      if (!cgltf_accessor_read_float(output, i, &values[i * comps], comps)) {
+        return false;
+      }
+    }
+    if (count == 1) {
+      float value[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+      for (size_t c = 0; c < comps; ++c) {
+        value[c] = values[comps + c];
+      }
+      if (path == 1) {
+        NormalizeQuat4(value);
+        value[0] = -value[0];
+        value[1] = -value[1];
+      } else if (path == 0) {
+        value[2] = -value[2];
+      }
+      MeshAnimKeyData key;
+      key.time = times[0];
+      key.value[0] = value[0];
+      key.value[1] = value[1];
+      key.value[2] = value[2];
+      key.value[3] = value[3];
+      keys.push_back(key);
+      return true;
+    }
+    float duration = times[count - 1];
+    float step = 1.0f / 60.0f;
+    if (duration > 0.0f && duration / step > 100000.0f) {
+      step = duration / 100000.0f;
+    }
+    float previousRotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    bool hasPreviousRotation = false;
+    for (size_t segment = 0; segment + 1 < count; ++segment) {
+      float t0 = times[segment];
+      float t1 = times[segment + 1];
+      float dt = t1 - t0;
+      if (dt <= 0.0f) {
+        continue;
+      }
+      const float* v0 = &values[(3 * segment + 1) * comps];
+      const float* out0 = &values[(3 * segment + 2) * comps];
+      const float* v1 = &values[(3 * (segment + 1) + 1) * comps];
+      const float* in1 = &values[(3 * (segment + 1)) * comps];
+      int steps = static_cast<int>(std::ceil(dt / step));
+      if (steps < 1) {
+        steps = 1;
+      }
+      for (int s = 0; s <= steps; ++s) {
+        if (segment > 0 && s == 0) {
+          continue;
+        }
+        float u = s == steps ? 1.0f : static_cast<float>(s) / static_cast<float>(steps);
+        float time = t0 + dt * u;
+        float value[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        for (size_t c = 0; c < comps; ++c) {
+          value[c] = CubicHermite(v0[c], out0[c], v1[c], in1[c], dt, u);
+        }
+        if (path == 1) {
+          NormalizeQuat4(value);
+          if (hasPreviousRotation) {
+            float dot = previousRotation[0] * value[0] + previousRotation[1] * value[1] + previousRotation[2] * value[2] + previousRotation[3] * value[3];
+            if (dot < 0.0f) {
+              value[0] = -value[0];
+              value[1] = -value[1];
+              value[2] = -value[2];
+              value[3] = -value[3];
+            }
+          }
+          previousRotation[0] = value[0];
+          previousRotation[1] = value[1];
+          previousRotation[2] = value[2];
+          previousRotation[3] = value[3];
+          hasPreviousRotation = true;
+        }
+        if (path == 0) {
+          value[2] = -value[2];
+        } else if (path == 1) {
+          value[0] = -value[0];
+          value[1] = -value[1];
+        }
+        MeshAnimKeyData key;
+        key.time = time;
+        key.value[0] = value[0];
+        key.value[1] = value[1];
+        key.value[2] = value[2];
+        key.value[3] = value[3];
+        keys.push_back(key);
+      }
+    }
+    return !keys.empty();
+  }
+  if (output->count < count) {
+    return false;
+  }
+  float previousRotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+  for (size_t i = 0; i < count; ++i) {
+    float value[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    if (!cgltf_accessor_read_float(output, i, value, comps)) {
+      return false;
+    }
+    if (path == 1) {
+      NormalizeQuat4(value);
+      if (i > 0) {
+        float dot = previousRotation[0] * value[0] + previousRotation[1] * value[1] + previousRotation[2] * value[2] + previousRotation[3] * value[3];
+        if (dot < 0.0f) {
+          value[0] = -value[0];
+          value[1] = -value[1];
+          value[2] = -value[2];
+          value[3] = -value[3];
+        }
+      }
+      previousRotation[0] = value[0];
+      previousRotation[1] = value[1];
+      previousRotation[2] = value[2];
+      previousRotation[3] = value[3];
+      value[0] = -value[0];
+      value[1] = -value[1];
+    } else if (path == 0) {
+      value[2] = -value[2];
+    }
+    MeshAnimKeyData key;
+    key.time = times[i];
+    key.value[0] = value[0];
+    key.value[1] = value[1];
+    key.value[2] = value[2];
+    key.value[3] = value[3];
+    keys.push_back(key);
+  }
+  return true;
+}
+bool BuildAnimations(cgltf_data* data, const std::vector<SkinBuild>& skins, std::vector<MeshAnimClipData>& clips, LogStore* log) {
+  if (data == nullptr) {
+    return false;
+  }
+  for (size_t ai = 0; ai < data->animations_count; ++ai) {
+    const cgltf_animation& animation = data->animations[ai];
+    MeshAnimClipData clip;
+    clip.name = animation.name != nullptr ? animation.name : ("clip_" + std::to_string(ai));
+    bool skippedUnsupported = false;
+    for (size_t ci = 0; ci < animation.channels_count; ++ci) {
+      const cgltf_animation_channel& channel = animation.channels[ci];
+      if (channel.target_node == nullptr || channel.sampler == nullptr) {
+        continue;
+      }
+      int path = -1;
+      if (channel.target_path == cgltf_animation_path_type_translation) {
+        path = 0;
+      } else if (channel.target_path == cgltf_animation_path_type_rotation) {
+        path = 1;
+      } else if (channel.target_path == cgltf_animation_path_type_scale) {
+        path = 2;
+      }
+      if (path < 0) {
+        skippedUnsupported = true;
+        continue;
+      }
+      int interpolation = 0;
+      if (channel.sampler->interpolation == cgltf_interpolation_type_step) {
+        interpolation = 1;
+      } else if (channel.sampler->interpolation == cgltf_interpolation_type_cubic_spline) {
+        interpolation = 2;
+      }
+      std::vector<MeshAnimKeyData> keys;
+      if (!BuildChannelKeys(channel.sampler->input, channel.sampler->output, path, interpolation, keys)) {
+        continue;
+      }
+      bool mapped = false;
+      for (size_t si = 0; si < skins.size(); ++si) {
+        std::unordered_map<const cgltf_node*, uint32_t>::const_iterator it = skins[si].nodeToJoint.find(channel.target_node);
+        if (it == skins[si].nodeToJoint.end()) {
+          continue;
+        }
+        MeshAnimChannelData built;
+        built.skin = static_cast<uint32_t>(si);
+        built.joint = it->second;
+        built.path = path;
+        built.interpolation = interpolation == 1 ? 1 : 0;
+        built.keys = keys;
+        clip.channels.push_back(built);
+        mapped = true;
+      }
+      if (!mapped) {
+        skippedUnsupported = true;
+      }
+    }
+    if (!clip.channels.empty()) {
+      float duration = 0.0f;
+      for (size_t ci = 0; ci < clip.channels.size(); ++ci) {
+        const std::vector<MeshAnimKeyData>& keys = clip.channels[ci].keys;
+        if (!keys.empty() && keys[keys.size() - 1].time > duration) {
+          duration = keys[keys.size() - 1].time;
+        }
+      }
+      clip.duration = duration;
+      clips.push_back(clip);
+    } else if (skippedUnsupported && log != nullptr) {
+      log->Add(LogLevel::Warning, "animation channels target nodes outside the skeleton; skipped");
+    }
+  }
+  return true;
+}
 }
 const cgltf_accessor* FindPosAcc(const cgltf_primitive& prim) {
   for (size_t ai = 0; ai < prim.attributes_count; ++ai) {
@@ -822,17 +1286,22 @@ struct PrimJob {
   size_t primIndex;
   float nodeM[16];
   float nm[9];
+  uint32_t skin = 0xFFFFFFFFu;
+  const std::vector<uint32_t>* jointRemap = nullptr;
 };
 struct PrimResult {
   bool ok;
   bool skipped;
   bool needTangent;
+  uint32_t skin;
   std::vector<float> pos;
   std::vector<float> nrm;
   std::vector<float> uv;
   std::vector<float> tan;
   std::vector<float> uv2;
   std::vector<uint32_t> idx;
+  std::vector<uint32_t> joints;
+  std::vector<float> weights;
   long matGi;
   const cgltf_primitive* prim;
   LogStore jobLog;
@@ -840,6 +1309,7 @@ struct PrimResult {
     : ok(true)
     , skipped(false)
     , needTangent(false)
+    , skin(0xFFFFFFFFu)
     , matGi(-1)
     , prim(nullptr) {
   }
@@ -848,8 +1318,10 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
   r.ok = true;
   r.skipped = false;
   r.needTangent = false;
+  r.skin = job.skin;
   r.matGi = -1;
   r.prim = nullptr;
+  const bool skinned = job.skin != 0xFFFFFFFFu && job.jointRemap != nullptr;
   const cgltf_mesh& mesh = data->meshes[job.meshIndex];
   const cgltf_primitive& prim = mesh.primitives[job.primIndex];
   r.prim = &prim;
@@ -863,14 +1335,23 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
   std::vector<float> primUv;
   std::vector<float> primTan;
   std::vector<uint32_t> primIdx;
+  std::vector<uint32_t> primJoints;
+  std::vector<float> primWeights;
   size_t primCount = 0;
   const cgltf_accessor* posAcc = nullptr;
   const cgltf_accessor* nrmAcc = nullptr;
   const cgltf_accessor* uvAcc = nullptr;
   const cgltf_accessor* tanAcc = nullptr;
   const cgltf_accessor* uv2Acc = nullptr;
+  const cgltf_accessor* jointsAcc = nullptr;
+  const cgltf_accessor* weightsAcc = nullptr;
   bool readFallback = true;
   if (prim.has_draco_mesh_compression != 0) {
+    if (skinned) {
+      r.jobLog.Add(LogLevel::Error, "skinned draco primitives are not supported");
+      r.ok = false;
+      return false;
+    }
     const cgltf_draco_mesh_compression& dc = prim.draco_mesh_compression;
     const unsigned char* dbase = dc.buffer_view != nullptr ? static_cast<const unsigned char*>(cgltf_buffer_view_data(dc.buffer_view)) : nullptr;
     int posId = -1;
@@ -948,11 +1429,33 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
         tanAcc = prim.attributes[ai].data;
       } else if (std::strcmp(prim.attributes[ai].name, "TEXCOORD_1") == 0) {
         uv2Acc = prim.attributes[ai].data;
+      } else if (std::strcmp(prim.attributes[ai].name, "JOINTS_0") == 0) {
+        jointsAcc = prim.attributes[ai].data;
+      } else if (std::strcmp(prim.attributes[ai].name, "WEIGHTS_0") == 0) {
+        weightsAcc = prim.attributes[ai].data;
       }
     }
     if (posAcc == nullptr || posAcc->count == 0) {
       r.skipped = true;
       return true;
+    }
+    if (skinned) {
+      if (job.jointRemap->empty() || jointsAcc == nullptr || weightsAcc == nullptr) {
+        r.jobLog.Add(LogLevel::Error, "skinned primitive missing JOINTS_0 or WEIGHTS_0");
+        r.ok = false;
+        return false;
+      }
+      if (jointsAcc->count != posAcc->count || weightsAcc->count != posAcc->count) {
+        r.jobLog.Add(LogLevel::Error, "skinned primitive attribute count mismatch");
+        r.ok = false;
+        return false;
+      }
+      for (size_t ai = 0; ai < prim.attributes_count; ++ai) {
+        if (std::strcmp(prim.attributes[ai].name, "JOINTS_1") == 0 || std::strcmp(prim.attributes[ai].name, "WEIGHTS_1") == 0) {
+          r.jobLog.Add(LogLevel::Warning, "more than four bone influences per vertex; extra sets ignored");
+          break;
+        }
+      }
     }
     primPos.reserve(posAcc->count * 3);
     primNrm.reserve(posAcc->count * 3);
@@ -1007,6 +1510,45 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
       primTan.push_back(tg[1]);
       primTan.push_back(-tg[2]);
       primTan.push_back(-tg[3]);
+      if (skinned) {
+        float jointValues[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        float weightValues[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        if (!ReadVec4(jointsAcc, vi, jointValues) || !ReadVec4(weightsAcc, vi, weightValues)) {
+          r.ok = false;
+          return false;
+        }
+        bool invalidWeight = false;
+        for (int k = 0; k < 4; ++k) {
+          if (!std::isfinite(jointValues[k]) || jointValues[k] < 0.0f || !std::isfinite(weightValues[k]) || weightValues[k] < 0.0f) {
+            invalidWeight = true;
+            break;
+          }
+        }
+        if (invalidWeight) {
+          r.jobLog.Add(LogLevel::Error, "skinned primitive has invalid joint or weight values");
+          r.ok = false;
+          return false;
+        }
+        float weightSum = weightValues[0] + weightValues[1] + weightValues[2] + weightValues[3];
+        if (weightSum <= 1.0e-8f) {
+          r.jobLog.Add(LogLevel::Warning, "skinned primitive vertex has zero weights; bound to the first joint");
+          weightValues[0] = 1.0f;
+          weightValues[1] = 0.0f;
+          weightValues[2] = 0.0f;
+          weightValues[3] = 0.0f;
+          weightSum = 1.0f;
+        }
+        for (int k = 0; k < 4; ++k) {
+          uint32_t jointIndex = static_cast<uint32_t>(jointValues[k] + 0.5f);
+          if (jointIndex >= job.jointRemap->size()) {
+            r.jobLog.Add(LogLevel::Error, "skinned primitive joint index out of range");
+            r.ok = false;
+            return false;
+          }
+          primJoints.push_back((*job.jointRemap)[jointIndex]);
+          primWeights.push_back(weightValues[k] / weightSum);
+        }
+      }
     }
     if (prim.indices != nullptr) {
       if (prim.indices->count % 3 != 0) {
@@ -1040,6 +1582,8 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
   std::vector<float> useUv = primUv;
   std::vector<float> useTan = primTan;
   std::vector<uint32_t> useIdx = primIdx;
+  std::vector<uint32_t> useJoints = primJoints;
+  std::vector<float> useWeights = primWeights;
   if (uv2Acc != nullptr) {
     primUv2.reserve(primCount * 2);
     for (size_t vi = 0; vi < primCount; ++vi) {
@@ -1057,7 +1601,7 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
     std::vector<float> uUv;
     std::vector<float> uTan;
     std::vector<uint32_t> uIdx;
-    if (UnwrapPrim(primPos, primNrm, primUv, primTan, primIdx, uPos, uNrm, uUv, uTan, uIdx, primUv2)) {
+    if (UnwrapPrim(primPos, primNrm, primUv, primTan, primIdx, uPos, uNrm, uUv, uTan, uIdx, primUv2, skinned ? &primJoints : nullptr, skinned ? &primWeights : nullptr, skinned ? &useJoints : nullptr, skinned ? &useWeights : nullptr)) {
       usePos = uPos;
       useNrm = uNrm;
       useUv = uUv;
@@ -1065,6 +1609,8 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
       useIdx = uIdx;
     } else {
       primUv2.assign(primCount * 2, 0.0f);
+      useJoints = primJoints;
+      useWeights = primWeights;
     }
   }
   if (useIdx.size() % 3 != 0) {
@@ -1077,6 +1623,8 @@ bool RunPrimJob(cgltf_data* data, const PrimJob& job, PrimResult& r) {
   r.tan = useTan;
   r.uv2 = primUv2;
   r.idx = useIdx;
+  r.joints = useJoints;
+  r.weights = useWeights;
   return true;
 }
 bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, MeshAssetData& out, LogStore* log, std::atomic<int>* progress) {
@@ -1169,9 +1717,28 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
     for (size_t vi = 0; vi < data->variants_count; ++vi) {
       out.variantNames.push_back(data->variants[vi].name != nullptr ? data->variants[vi].name : "");
     }
+    std::vector<float> nodeWorld(data->nodes_count * 16, 0.0f);
+    for (size_t ni = 0; ni < data->nodes_count; ++ni) {
+      cgltf_node_transform_world(&data->nodes[ni], &nodeWorld[ni * 16]);
+    }
+    std::vector<SkinBuild> skins;
+    std::unordered_map<const cgltf_skin*, uint32_t> skinMap;
+    for (size_t si = 0; si < data->skins_count && ok; ++si) {
+      SkinBuild sb;
+      if (!BuildSkin(data, &data->skins[si], nodeWorld, sb)) {
+        if (log != nullptr) {
+          log->Add(LogLevel::Warning, "invalid glTF skin; affected meshes imported without skinning");
+        }
+        continue;
+      }
+      skinMap[&data->skins[si]] = static_cast<uint32_t>(skins.size());
+      skins.push_back(std::move(sb));
+    }
+    bool anySkinned = false;
     struct MeshInstance {
       size_t meshIndex;
       float m[16];
+      uint32_t skin;
     };
     std::vector<MeshInstance> instances;
     std::vector<char> meshReferenced(data->meshes_count, 0);
@@ -1182,7 +1749,25 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
       }
       MeshInstance inst;
       inst.meshIndex = static_cast<size_t>(node.mesh - data->meshes);
-      cgltf_node_transform_world(&node, inst.m);
+      inst.skin = 0xFFFFFFFFu;
+      if (node.skin != nullptr) {
+        std::unordered_map<const cgltf_skin*, uint32_t>::const_iterator skinIt = skinMap.find(node.skin);
+        if (skinIt != skinMap.end()) {
+          inst.skin = skinIt->second;
+          anySkinned = true;
+        }
+      }
+      if (inst.skin != 0xFFFFFFFFu) {
+        for (int k = 0; k < 16; ++k) {
+          inst.m[k] = 0.0f;
+        }
+        inst.m[0] = 1.0f;
+        inst.m[5] = 1.0f;
+        inst.m[10] = 1.0f;
+        inst.m[15] = 1.0f;
+      } else {
+        cgltf_node_transform_world(&node, inst.m);
+      }
       meshReferenced[inst.meshIndex] = 1;
       instances.push_back(inst);
     }
@@ -1192,6 +1777,7 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
       }
       MeshInstance inst;
       inst.meshIndex = mi;
+      inst.skin = 0xFFFFFFFFu;
       for (int k = 0; k < 16; ++k) {
         inst.m[k] = 0.0f;
       }
@@ -1204,6 +1790,12 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
     for (size_t ni = 0; ni < data->nodes_count && ok; ++ni) {
       const cgltf_node& node = data->nodes[ni];
       if (node.has_mesh_gpu_instancing == 0 || node.mesh == nullptr) {
+        continue;
+      }
+      if (node.skin != nullptr) {
+        if (log != nullptr) {
+          log->Add(LogLevel::Warning, "GPU instancing of skinned meshes is not supported; instance list ignored");
+        }
         continue;
       }
       const cgltf_accessor* tAcc = nullptr;
@@ -1254,6 +1846,7 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
         ComposeTRS(t, q, s, local);
         MeshInstance inst;
         inst.meshIndex = static_cast<size_t>(node.mesh - data->meshes);
+        inst.skin = 0xFFFFFFFFu;
         MulMat4(nodeM, local, inst.m);
         instances.push_back(inst);
       }
@@ -1334,6 +1927,10 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
         PrimJob job;
         job.meshIndex = instances[ii].meshIndex;
         job.primIndex = pi;
+        job.skin = instances[ii].skin;
+        if (job.skin != 0xFFFFFFFFu) {
+          job.jointRemap = &skins[job.skin].jointRemap;
+        }
         for (int k = 0; k < 16; ++k) {
           job.nodeM[k] = instances[ii].m[k];
         }
@@ -1372,6 +1969,7 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
         workers[t].join();
       }
     }
+    std::vector<uint32_t> partSkinList;
     for (size_t ji = 0; ji < primJobs.size() && ok; ++ji) {
       PrimResult& r = primResults[ji];
       if (log != nullptr) {
@@ -1403,6 +2001,24 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
       out.uvs.insert(out.uvs.end(), r.uv.begin(), r.uv.end());
       out.tangents.insert(out.tangents.end(), r.tan.begin(), r.tan.end());
       out.uv2s.insert(out.uv2s.end(), r.uv2.begin(), r.uv2.end());
+      size_t primVertexCount = r.pos.size() / 3;
+      if (r.skin != 0xFFFFFFFFu && r.joints.empty()) {
+        ok = false;
+        break;
+      }
+      if (anySkinned) {
+        if (!r.joints.empty()) {
+          if (r.joints.size() != primVertexCount * 4 || r.weights.size() != primVertexCount * 4) {
+            ok = false;
+            break;
+          }
+          out.skinJoints.insert(out.skinJoints.end(), r.joints.begin(), r.joints.end());
+          out.skinWeights.insert(out.skinWeights.end(), r.weights.begin(), r.weights.end());
+        } else {
+          out.skinJoints.insert(out.skinJoints.end(), primVertexCount * 4, 0u);
+          out.skinWeights.insert(out.skinWeights.end(), primVertexCount * 4, 0.0f);
+        }
+      }
       out.indices.reserve(out.indices.size() + r.idx.size());
       for (size_t k = 0; k < r.idx.size(); k += 3) {
         out.indices.push_back(baseVertex + r.idx[k]);
@@ -1453,10 +2069,27 @@ bool ImportGltfMesh(const std::string& glbPath, const std::string& keepGuid, Mes
       part.indexCount = static_cast<uint32_t>(r.idx.size());
       if (part.indexCount > 0) {
         out.parts.push_back(part);
+        partSkinList.push_back(r.skin);
       }
     }
-    if (ok && data->skins_count > 0 && log != nullptr) {
-      log->Add(LogLevel::Warning, "Skinned mesh imported in bind pose; skeleton arrives in Fase 10");
+    if (ok) {
+      bool hasSkinnedPart = false;
+      for (size_t pi = 0; pi < partSkinList.size(); ++pi) {
+        if (partSkinList[pi] != 0xFFFFFFFFu) {
+          hasSkinnedPart = true;
+          break;
+        }
+      }
+      if (hasSkinnedPart) {
+        out.partSkins = partSkinList;
+      }
+      out.skins.reserve(skins.size());
+      for (size_t si = 0; si < skins.size(); ++si) {
+        out.skins.push_back(skins[si].data);
+      }
+      if (!skins.empty() && !BuildAnimations(data, skins, out.animations, log)) {
+        ok = false;
+      }
     }
     if (texJobs.size() == 1 && ok) {
       LogStore jl;

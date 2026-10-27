@@ -1,18 +1,31 @@
 #include "Kizuri/Assets/MeshCodec.h"
 #include <xatlas.h>
 namespace Kizuri {
-bool UnwrapPrim(const std::vector<float>& inPos, const std::vector<float>& inNrm, const std::vector<float>& inUv, const std::vector<float>& inTan, const std::vector<uint32_t>& inIdx, std::vector<float>& outPos, std::vector<float>& outNrm, std::vector<float>& outUv, std::vector<float>& outTan, std::vector<uint32_t>& outIdx, std::vector<float>& outUv2) {
+bool UnwrapPrim(const std::vector<float>& inPos, const std::vector<float>& inNrm, const std::vector<float>& inUv, const std::vector<float>& inTan, const std::vector<uint32_t>& inIdx, std::vector<float>& outPos, std::vector<float>& outNrm, std::vector<float>& outUv, std::vector<float>& outTan, std::vector<uint32_t>& outIdx, std::vector<float>& outUv2, const std::vector<uint32_t>* inJoints, const std::vector<float>* inWeights, std::vector<uint32_t>* outJoints, std::vector<float>* outWeights) {
   outPos.clear();
   outNrm.clear();
   outUv.clear();
   outTan.clear();
   outIdx.clear();
   outUv2.clear();
+  const bool hasSkin = inJoints != nullptr || inWeights != nullptr || outJoints != nullptr || outWeights != nullptr;
+  if (hasSkin && (inJoints == nullptr || inWeights == nullptr || outJoints == nullptr || outWeights == nullptr)) {
+    return false;
+  }
+  if (outJoints != nullptr) {
+    outJoints->clear();
+  }
+  if (outWeights != nullptr) {
+    outWeights->clear();
+  }
   size_t vertCount = inPos.size() / 3;
   if (vertCount == 0 || vertCount > 4000000000u) {
     return false;
   }
   if (inNrm.size() != inPos.size() || inUv.size() != vertCount * 2 || inTan.size() != vertCount * 4) {
+    return false;
+  }
+  if (hasSkin && (inJoints->size() != vertCount * 4 || inWeights->size() != vertCount * 4)) {
     return false;
   }
   if (inIdx.empty() || inIdx.size() % 3 != 0) {
@@ -55,6 +68,10 @@ bool UnwrapPrim(const std::vector<float>& inPos, const std::vector<float>& inNrm
       outUv.reserve(om.vertexCount * 2);
       outTan.reserve(om.vertexCount * 4);
       outUv2.reserve(om.vertexCount * 2);
+      if (hasSkin) {
+        outJoints->reserve(om.vertexCount * 4);
+        outWeights->reserve(om.vertexCount * 4);
+      }
       for (uint32_t i = 0; i < om.vertexCount && ok; ++i) {
         uint32_t xr = om.vertexArray[i].xref;
         if (xr >= vertCount) {
@@ -75,6 +92,12 @@ bool UnwrapPrim(const std::vector<float>& inPos, const std::vector<float>& inNrm
         outTan.push_back(inTan[xr * 4 + 3]);
         outUv2.push_back(om.vertexArray[i].uv[0] / w);
         outUv2.push_back(om.vertexArray[i].uv[1] / h);
+        if (hasSkin) {
+          for (int k = 0; k < 4; ++k) {
+            outJoints->push_back((*inJoints)[xr * 4 + static_cast<size_t>(k)]);
+            outWeights->push_back((*inWeights)[xr * 4 + static_cast<size_t>(k)]);
+          }
+        }
       }
       for (uint32_t i = 0; i < om.indexCount && ok; ++i) {
         if (om.indexArray[i] >= om.vertexCount) {
@@ -93,6 +116,12 @@ bool UnwrapPrim(const std::vector<float>& inPos, const std::vector<float>& inNrm
     outTan.clear();
     outIdx.clear();
     outUv2.clear();
+    if (outJoints != nullptr) {
+      outJoints->clear();
+    }
+    if (outWeights != nullptr) {
+      outWeights->clear();
+    }
     return false;
   }
   return true;
