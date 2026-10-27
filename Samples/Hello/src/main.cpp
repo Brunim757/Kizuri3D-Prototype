@@ -52,6 +52,7 @@
 #include <draco/compression/encode.h>
 #include <DirectXMath.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -1471,6 +1472,79 @@ bool TestMeshletParts() {
     }
   }
   return true;
+}
+bool TestMeshletLargePart() {
+  Kizuri::MeshAssetData grid;
+  const int n = 24;
+  for (int y = 0; y <= n; ++y) {
+    for (int x = 0; x <= n; ++x) {
+      grid.positions.push_back(static_cast<float>(x));
+      grid.positions.push_back(static_cast<float>(y));
+      grid.positions.push_back(static_cast<float>((x * 7 + y * 13) % 5) * 0.01f);
+      grid.normals.push_back(0.0f);
+      grid.normals.push_back(0.0f);
+      grid.normals.push_back(1.0f);
+      grid.uvs.push_back(static_cast<float>(x) / n);
+      grid.uvs.push_back(static_cast<float>(y) / n);
+    }
+  }
+  for (int y = 0; y < n; ++y) {
+    for (int x = 0; x < n; ++x) {
+      uint32_t a = static_cast<uint32_t>(y * (n + 1) + x);
+      uint32_t b = a + 1;
+      uint32_t c = a + n + 1;
+      uint32_t d = c + 1;
+      grid.indices.push_back(a);
+      grid.indices.push_back(b);
+      grid.indices.push_back(c);
+      grid.indices.push_back(b);
+      grid.indices.push_back(d);
+      grid.indices.push_back(c);
+    }
+  }
+  Kizuri::MeshPartData part;
+  part.indexOffset = 0;
+  part.indexCount = static_cast<uint32_t>(grid.indices.size());
+  part.material = 0;
+  grid.parts.push_back(part);
+  const std::vector<float> originalPositions = grid.positions;
+  const std::vector<uint32_t> originalIndices = grid.indices;
+  auto triangleKey = [](const std::vector<float>& positions, const std::vector<uint32_t>& indices, size_t tri) {
+    std::array<std::array<float, 3>, 3> v;
+    for (int c = 0; c < 3; ++c) {
+      uint32_t index = indices[tri * 3 + c];
+      v[c][0] = positions[index * 3 + 0];
+      v[c][1] = positions[index * 3 + 1];
+      v[c][2] = positions[index * 3 + 2];
+    }
+    std::sort(v.begin(), v.end());
+    return std::array<float, 9>{ v[0][0], v[0][1], v[0][2], v[1][0], v[1][1], v[1][2], v[2][0], v[2][1], v[2][2] };
+  };
+  std::vector<std::array<float, 9>> before;
+  for (size_t t = 0; t < originalIndices.size() / 3; ++t) {
+    before.push_back(triangleKey(originalPositions, originalIndices, t));
+  }
+  std::vector<Kizuri::MeshletRange> ranges;
+  if (!Kizuri::BuildMeshlets(grid, ranges) || ranges.size() < 2) {
+    return false;
+  }
+  std::vector<std::array<float, 9>> after;
+  for (size_t t = 0; t < grid.indices.size() / 3; ++t) {
+    after.push_back(triangleKey(grid.positions, grid.indices, t));
+  }
+  std::sort(before.begin(), before.end());
+  std::sort(after.begin(), after.end());
+  if (before != after) {
+    return false;
+  }
+  size_t total = 0;
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    if (static_cast<size_t>(ranges[i].indexOffset) + static_cast<size_t>(ranges[i].indexCount) > grid.indices.size()) {
+      return false;
+    }
+    total += ranges[i].indexCount;
+  }
+  return total == grid.indices.size();
 }
 bool TestMeshStreaming() {
   namespace fs = std::filesystem;
@@ -12418,6 +12492,7 @@ int main() {
   failures += Check("StaticMerge", TestStaticMerge());
   failures += Check("Meshlets", TestMeshlets());
   failures += Check("MeshletParts", TestMeshletParts());
+  failures += Check("MeshletLargePart", TestMeshletLargePart());
   failures += Check("MeshStreaming", TestMeshStreaming());
   failures += Check("CookieArray", TestCookieArray());
   failures += Check("Procedural", TestProcedural());
