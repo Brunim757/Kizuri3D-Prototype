@@ -42,11 +42,15 @@ float4 main(PSIn pin) : SV_Target
     if (valid < 0.5) {
         return float4(curr, cdepth);
     }
-    float3 reprojP = wpos;
+    float2 sndc = float2(pin.uv.x * 2.0 - 1.0, 1.0 - pin.uv.y * 2.0);
+    float3 sray = CamFwd.xyz + CamRight.xyz * (sndc.x * TanWH.x) + CamUp.xyz * (sndc.y * TanWH.y);
+    float3 sdir = normalize(sray);
+    float3 reprojP;
     if (isSky > 0.5) {
-        float2 sndc = float2(pin.uv.x * 2.0 - 1.0, 1.0 - pin.uv.y * 2.0);
-        float3 sray = CamFwd.xyz + CamRight.xyz * (sndc.x * TanWH.x) + CamUp.xyz * (sndc.y * TanWH.y);
-        reprojP = CamPos.xyz + normalize(sray) * 10000.0;
+        reprojP = CamPos.xyz + sdir * 10000.0;
+    } else {
+        float st = cdepth / max(dot(sdir, CamFwd.xyz), 1e-4);
+        reprojP = CamPos.xyz + sdir * st;
     }
     float4 ppPrevU = mul(float4(reprojP, 1.0), PrevVPU);
     float4 ppCurrU = mul(float4(reprojP, 1.0), CurrVPU);

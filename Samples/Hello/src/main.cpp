@@ -23,6 +23,7 @@
 #include "Kizuri/Shadows.h"
 #include "Kizuri/QualityPreset.h"
 #include "Kizuri/Dpi.h"
+#include "Kizuri/TaaMath.h"
 #include "Kizuri/DeferredRenderer.h"
 #include "Kizuri/RenderGraph.h"
 #include "Kizuri/FramePacer.h"
@@ -7892,31 +7893,113 @@ bool LoadShaderText(const char* name, std::string& out) {
   }
   return false;
 }
+static void TaaTestProject(const float vp[16], const float p[3], float& u, float& v) {
+  const float x = p[0] * vp[0] + p[1] * vp[4] + p[2] * vp[8] + vp[12];
+  const float y = p[0] * vp[1] + p[1] * vp[5] + p[2] * vp[9] + vp[13];
+  const float w = p[0] * vp[3] + p[1] * vp[7] + p[2] * vp[11] + vp[15];
+  if (w <= 1e-6f) {
+    u = -10.0f;
+    v = -10.0f;
+    return;
+  }
+  u = x / w * 0.5f + 0.5f;
+  v = 0.5f - y / w * 0.5f;
+}
+bool TestTaaStablePosition() {
+  const float fov = 1.04719755f;
+  const float aspect = 16.0f / 9.0f;
+  const DirectX::XMMATRIX viewM = DirectX::XMMatrixLookAtLH(
+    DirectX::XMVectorSet(0.0f, 1.0f, -6.0f, 1.0f),
+    DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f),
+    DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));
+  const DirectX::XMMATRIX projM = DirectX::XMMatrixPerspectiveFovLH(fov, aspect, 0.1f, 500.0f);
+  DirectX::XMFLOAT4X4 vf;
+  DirectX::XMFLOAT4X4 pf;
+  DirectX::XMFLOAT4X4 vpf;
+  DirectX::XMStoreFloat4x4(&vf, viewM);
+  DirectX::XMStoreFloat4x4(&pf, projM);
+  DirectX::XMStoreFloat4x4(&vpf, DirectX::XMMatrixMultiply(viewM, projM));
+  float projJ[16];
+  std::memcpy(projJ, &pf, sizeof(projJ));
+  const float jx = 0.03f;
+  const float jy = -0.02f;
+  projJ[8] += jx;
+  projJ[9] += jy;
+  DirectX::XMFLOAT4X4 pjf;
+  std::memcpy(&pjf, projJ, sizeof(pjf));
+  DirectX::XMFLOAT4X4 vpjf;
+  DirectX::XMStoreFloat4x4(&vpjf, DirectX::XMMatrixMultiply(viewM, DirectX::XMLoadFloat4x4(&pjf)));
+  Kizuri::TaaCameraBasis cam;
+  cam.pos[0] = 0.0f;
+  cam.pos[1] = 1.0f;
+  cam.pos[2] = -6.0f;
+  cam.fwd[0] = 0.0f;
+  cam.fwd[1] = 0.0f;
+  cam.fwd[2] = 1.0f;
+  cam.right[0] = 1.0f;
+  cam.right[1] = 0.0f;
+  cam.right[2] = 0.0f;
+  cam.up[0] = 0.0f;
+  cam.up[1] = 1.0f;
+  cam.up[2] = 0.0f;
+  cam.tanH = std::tan(fov * 0.5f);
+  cam.tanW = cam.tanH * aspect;
+  const float u = 0.63f;
+  const float v = 0.41f;
+  const float depth = 12.0f;
+  const float u0 = u - jx * 0.5f;
+  const float v0 = v + jy * 0.5f;
+  float wc[3];
+  Kizuri::TaaStableWorldPosition(cam, u0, v0, depth, wc);
+  float jitteredU = 0.0f;
+  float jitteredV = 0.0f;
+  TaaTestProject(&vpjf.m[0][0], wc, jitteredU, jitteredV);
+  if (std::fabs(jitteredU - u) > 1e-4f || std::fabs(jitteredV - v) > 1e-4f) {
+    return false;
+  }
+  float oldHistU = 0.0f;
+  float oldHistV = 0.0f;
+  TaaTestProject(&vpf.m[0][0], wc, oldHistU, oldHistV);
+  if (std::fabs(oldHistU - u) < 0.005f || std::fabs(oldHistV - v) < 0.005f) {
+    return false;
+  }
+  float stable[3];
+  Kizuri::TaaStableWorldPosition(cam, u, v, depth, stable);
+  float fixedU = 0.0f;
+  float fixedV = 0.0f;
+  TaaTestProject(&vpf.m[0][0], stable, fixedU, fixedV);
+  return std::fabs(fixedU - u) < 1e-4f && std::fabs(fixedV - v) < 1e-4f;
+}
 bool TestTaaReprojection() {
   std::string src;
   if (!LoadShaderText("TaaPS.hlsl", src)) {
     return false;
   }
-  const char* required[8] = {
+  const char* required[12] = {
     "row_major float4x4 PrevVPU;",
     "row_major float4x4 CurrVPU;",
     "float4 CamPos;",
+    "float3 sdir = normalize(sray);",
+    "float st = cdepth / max(dot(sdir, CamFwd.xyz), 1e-4);",
+    "reprojP = CamPos.xyz + sdir * st;",
     "float4 ppPrevU = mul(float4(reprojP, 1.0), PrevVPU);",
     "float4 ppCurrU = mul(float4(reprojP, 1.0), CurrVPU);",
     "histUv = ppPrevU.xy / ppPrevU.w",
     "motionPx = (prevUv - currUv)",
-    "HistoryTX.Sample(LinearSampler, histUv)"
+    "HistoryTX.Sample(LinearSampler, histUv)",
+    "float2 sndc = float2(pin.uv.x * 2.0 - 1.0, 1.0 - pin.uv.y * 2.0);"
   };
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < 12; ++i) {
     if (src.find(required[i]) == std::string::npos) {
       return false;
     }
   }
-  const char* forbidden[2] = {
+  const char* forbidden[3] = {
     "float4x4 PrevVP;",
-    "mul(float4(reprojP, 1.0), PrevVP)"
+    "mul(float4(reprojP, 1.0), PrevVP)",
+    "float3 reprojP = wpos;"
   };
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < 3; ++i) {
     if (src.find(forbidden[i]) != std::string::npos) {
       return false;
     }
@@ -13564,6 +13647,7 @@ int main() {
   failures += Check("TaaResize", TestTaaResize());
   failures += Check("TaaPassDelta", TestTaaPassDelta());
   failures += Check("TaaReprojection", TestTaaReprojection());
+  failures += Check("TaaStablePosition", TestTaaStablePosition());
   failures += Check("RHI-StateCache", TestStateCache());
   failures += Check("FreeCamera", TestCamera());
   failures += Check("MeshLoader-gltf", TestMeshLoader());
