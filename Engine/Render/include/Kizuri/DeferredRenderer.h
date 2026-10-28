@@ -157,6 +157,8 @@ struct ShadowDrawItem {
   RHIBuffer ib;
   uint32_t start;
   uint32_t count;
+  uint32_t boneOffset;
+  uint32_t boneCount;
 };
 struct DecalDrawItem {
   float world[16];
@@ -176,6 +178,8 @@ struct ForwardDrawItem {
   RHIBuffer ib;
   uint32_t start;
   uint32_t count;
+  uint32_t boneOffset;
+  uint32_t boneCount;
   DeferredMaterial mat;
   uint32_t lightCount;
   uint32_t lightIndex[16];
@@ -186,6 +190,8 @@ struct GeoBatchItem {
   RHIBuffer ib;
   uint32_t start;
   uint32_t count;
+  uint32_t boneOffset;
+  uint32_t boneCount;
   DeferredMaterial mat;
   float lodFade;
   uint64_t matHash;
@@ -362,7 +368,8 @@ public:
   float TargetFrameRate() const { return framePacer.TargetFps(); }
   void SetEnvProbes(int count, const RHITexture* cubes, const float (*boxMin)[4], const float (*boxMax)[4]);
   void DrawObject(const float world[16]);
-  void DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade = 0.0f, const float* aabbMin = nullptr, const float* aabbMax = nullptr);
+  void DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade = 0.0f, const float* aabbMin = nullptr, const float* aabbMax = nullptr, uint32_t boneOffset = 0xFFFFFFFFu, uint32_t boneCount = 0);
+  uint32_t AddBoneMatrices(const float* matrices, uint32_t count);
   void DrawDecal(const float world[16], const float invWorld[16], const float size[3], float fade, RHITexture tex, int matMask = 1, float matRough = 0.5f, float matMetal = 0.0f);
   void DrawDecalAtlas(const float world[16], const float invWorld[16], const float size[3], float fade, const float rect[4], int matMask = 1, float matRough = 0.5f, float matMetal = 0.0f);
   void SetDecalAtlas(RHITexture tex);
@@ -407,6 +414,13 @@ public:
   RHIBuffer vb;
   RHIBuffer ib;
   RHIConstBuffer geoCB;
+  RHIStructBuffer boneBuf;
+  RHIConstBuffer boneCB;
+  RHIConstBuffer boneCBShadow;
+  uint32_t boneCapacityRows;
+  uint64_t boneContentHash;
+  std::vector<float> bonePool;
+  std::vector<float> boneUploadScratch;
   RHIConstBuffer lightCB;
   RHIConstBuffer matCB;
   RHIConstBuffer matExtCB;
@@ -417,6 +431,7 @@ public:
   RHITexture neutralBlack;
   RHITexture neutralAniso;
   RHIVertexShader geoVS;
+  RHIVertexShader geoVSSkinned;
   RHIPixelShader geoPS;
   RHIHullShader tessHS;
   RHIDomainShader tessDS;
@@ -430,6 +445,7 @@ public:
   RHIVertexShader lightVS;
   RHIPixelShader lightPS;
   RHIVertexShader depthVS;
+  RHIVertexShader depthVSSkinned;
   RHIVertexShader decalVS;
   RHIPixelShader decalPS;
   RHIPixelShader decalMatsPS;
@@ -543,6 +559,8 @@ public:
   void DrawGeoInstanced(uint64_t key, const std::vector<size_t>& indices);
   void DrawGeoGpuDriven(const std::vector<size_t>& indices);
   void FlushGeoQueue();
+  void UploadBones();
+  void DrawCasterVS(const ShadowDrawItem& item, RHIVertexShader vs, RHIVertexShader skinnedVS, RHIConstBuffer boneBuffer);
   bool shadowCacheOn;
   bool shadowAutoRes;
   int shadowStreak;
@@ -720,6 +738,7 @@ public:
   RHIPixelShader overdrawPS;
   RHIRenderTarget overdrawA;
   RHIVertexShader uvVS;
+  RHIVertexShader uvVSSkinned;
   RHIPixelShader uvPS;
   RHIRenderTarget uvA;
   bool fallbackOn;
@@ -821,6 +840,7 @@ public:
   bool filmActive;
   uint64_t frameIndex;
   RHIInputLayout layout;
+  RHIInputLayout skinnedLayout;
   RHISampler sampler;
   RHISampler geoSampler;
   RHITexture neutralAlbedo;

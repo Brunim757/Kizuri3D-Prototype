@@ -244,6 +244,11 @@ DeferredRenderer::DeferredRenderer()
   , vb(0)
   , ib(0)
   , geoCB(0)
+  , boneBuf(0)
+  , boneCB(0)
+  , boneCBShadow(0)
+  , boneCapacityRows(0)
+  , boneContentHash(0)
   , lightCB(0)
   , matCB(0)
   , matExtCB(0)
@@ -263,6 +268,7 @@ DeferredRenderer::DeferredRenderer()
   , meshHasBounds(false)
   , culledDraws(0)
   , geoVS(0)
+  , geoVSSkinned(0)
   , geoPS(0)
   , tessHS(0)
   , tessDS(0)
@@ -276,6 +282,7 @@ DeferredRenderer::DeferredRenderer()
   , lightVS(0)
   , lightPS(0)
   , depthVS(0)
+  , depthVSSkinned(0)
   , decalVS(0)
   , decalPS(0)
   , decalMatsPS(0)
@@ -432,6 +439,7 @@ DeferredRenderer::DeferredRenderer()
   , overdrawPS(0)
   , overdrawA(0)
   , uvVS(0)
+  , uvVSSkinned(0)
   , uvPS(0)
   , uvA(0)
   , fallbackOn(true)
@@ -503,6 +511,7 @@ DeferredRenderer::DeferredRenderer()
   , filmActive(false)
   , frameIndex(0)
   , layout(0)
+  , skinnedLayout(0)
   , sampler(0)
   , geoSampler(0)
   , neutralAlbedo(0)
@@ -978,6 +987,16 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   if (geoVSInstanced == 0 || instLayout == 0) {
     batchOk = false;
   }
+  geoVSSkinned = LoadVertexShader(geoVSPath.c_str(), "SkinnedMain");
+  depthVSSkinned = LoadVertexShader(depthVSPath.c_str(), "SkinnedMain");
+  uvVSSkinned = LoadVertexShader(uvVSPath.c_str(), "SkinnedMain");
+  if (geoVSSkinned == 0 || depthVSSkinned == 0 || uvVSSkinned == 0) {
+    return false;
+  }
+  skinnedLayout = rhi->CreateInputLayoutPNUTSkinned(geoVSSkinned);
+  if (skinnedLayout == 0) {
+    return false;
+  }
   GeoConstants gc;
   std::memset(&gc, 0, sizeof(gc));
   LightConstants lc;
@@ -992,6 +1011,12 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   SsrConstants sc;
   std::memset(&sc, 0, sizeof(sc));
   geoCB = rhi->CreateConstantBuffer(sizeof(GeoConstants), &gc);
+  uint32_t boneInit[4] = { 0, 0, 0, 0 };
+  boneCB = rhi->CreateConstantBuffer(sizeof(boneInit), boneInit);
+  boneCBShadow = rhi->CreateConstantBuffer(sizeof(boneInit), boneInit);
+  if (boneCB == 0 || boneCBShadow == 0) {
+    return false;
+  }
   lightCB = rhi->CreateConstantBuffer(sizeof(LightConstants), &lc);
   matCB = rhi->CreateConstantBuffer(sizeof(MatConstants), &mc);
   matExtCB = rhi->CreateConstantBuffer(sizeof(MatExtConstants), &mec);
@@ -1308,6 +1333,22 @@ void DeferredRenderer::Shutdown() {
     rhi->DestroyConstantBuffer(geoCB);
     geoCB = 0;
   }
+  if (boneBuf != 0) {
+    rhi->DestroyStructBuffer(boneBuf);
+    boneBuf = 0;
+  }
+  if (boneCB != 0) {
+    rhi->DestroyConstantBuffer(boneCB);
+    boneCB = 0;
+  }
+  if (boneCBShadow != 0) {
+    rhi->DestroyConstantBuffer(boneCBShadow);
+    boneCBShadow = 0;
+  }
+  boneCapacityRows = 0;
+  boneContentHash = 0;
+  bonePool.clear();
+  boneUploadScratch.clear();
   if (lightCB != 0) {
     rhi->DestroyConstantBuffer(lightCB);
     lightCB = 0;
@@ -3061,9 +3102,7 @@ void DeferredRenderer::RenderShadowMaps() {
         std::memcpy(gc.view, identity, sizeof(gc.view));
         std::memcpy(gc.proj, vp, sizeof(gc.proj));
         rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-        rhi->SetVertexBuffer(shadowDraws[di].vb, 0);
-        rhi->SetIndexBuffer(shadowDraws[di].ib);
-        rhi->DrawIndexed(shadowDraws[di].count, shadowDraws[di].start, 0);
+        DrawCasterVS(shadowDraws[di], depthVS, depthVSSkinned, boneCBShadow);
         ++stats.shadowDraws;
         stats.shadowTris += shadowDraws[di].count / 3;
       }
@@ -3110,9 +3149,7 @@ void DeferredRenderer::RenderShadowMaps() {
       std::memcpy(gc.view, identity, sizeof(gc.view));
       std::memcpy(gc.proj, vp, sizeof(gc.proj));
       rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-      rhi->SetVertexBuffer(shadowDraws[di].vb, 0);
-      rhi->SetIndexBuffer(shadowDraws[di].ib);
-      rhi->DrawIndexed(shadowDraws[di].count, shadowDraws[di].start, 0);
+      DrawCasterVS(shadowDraws[di], depthVS, depthVSSkinned, boneCBShadow);
       ++stats.shadowDraws;
       stats.shadowTris += shadowDraws[di].count / 3;
     }
@@ -3147,9 +3184,7 @@ void DeferredRenderer::RenderShadowMaps() {
         std::memcpy(gc.view, identity, sizeof(gc.view));
         std::memcpy(gc.proj, faces[f], sizeof(gc.proj));
         rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-        rhi->SetVertexBuffer(shadowDraws[di].vb, 0);
-        rhi->SetIndexBuffer(shadowDraws[di].ib);
-        rhi->DrawIndexed(shadowDraws[di].count, shadowDraws[di].start, 0);
+        DrawCasterVS(shadowDraws[di], depthVS, depthVSSkinned, boneCBShadow);
         ++stats.shadowDraws;
         stats.shadowTris += shadowDraws[di].count / 3;
       }
@@ -3304,6 +3339,8 @@ void DeferredRenderer::BeginObjects(const float view[16], const float proj[16]) 
   stats.gpuLightMs = keepLight;
   stats.gpuPostMs = keepPost;
   stats.gpuValid = keepValid;
+  bonePool.clear();
+  boneContentHash = 0;
   frameStart = std::chrono::steady_clock::now();
   SetupGeometryPass();
   begun = true;
@@ -3521,6 +3558,9 @@ uint64_t DeferredRenderer::CasterHash() const {
   }
   size_t nsh = shadowDraws.size();
   mix(&nsh, sizeof(nsh));
+  mix(&boneContentHash, sizeof(boneContentHash));
+  size_t nb = bonePool.size();
+  mix(&nb, sizeof(nb));
   for (size_t i = 0; i < nsh; ++i) {
     const ShadowDrawItem& sd = shadowDraws[i];
     mix(sd.world, sizeof(sd.world));
@@ -3528,6 +3568,8 @@ uint64_t DeferredRenderer::CasterHash() const {
     mix(&sd.ib, sizeof(sd.ib));
     mix(&sd.start, sizeof(sd.start));
     mix(&sd.count, sizeof(sd.count));
+    mix(&sd.boneOffset, sizeof(sd.boneOffset));
+    mix(&sd.boneCount, sizeof(sd.boneCount));
   }
   return h == 0 ? 1 : h;
 }
@@ -3954,6 +3996,8 @@ void DeferredRenderer::DrawObject(const float world[16]) {
   item.ib = ib;
   item.start = 0;
   item.count = indexCount;
+  item.boneOffset = 0xFFFFFFFFu;
+  item.boneCount = 0;
   shadowDraws.push_back(item);
   if (meshHasBounds && CullWorldAABB(world, meshMin, meshMax)) {
     return;
@@ -3965,6 +4009,8 @@ void DeferredRenderer::DrawObject(const float world[16]) {
     fwd.ib = ib;
     fwd.start = 0;
     fwd.count = indexCount;
+    fwd.boneOffset = 0xFFFFFFFFu;
+    fwd.boneCount = 0;
     fwd.mat = material;
     forwardDraws.push_back(fwd);
     return;
@@ -3975,6 +4021,8 @@ void DeferredRenderer::DrawObject(const float world[16]) {
   gi.ib = ib;
   gi.start = 0;
   gi.count = indexCount;
+  gi.boneOffset = 0xFFFFFFFFu;
+  gi.boneCount = 0;
   gi.mat = material;
   gi.lodFade = 0.0f;
   gi.matHash = MatHash(material);
@@ -3987,9 +4035,15 @@ void DeferredRenderer::DrawObject(const float world[16]) {
   gi.bmax[2] = 1.0f;
   geoQueue.push_back(gi);
 }
-void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade, const float* aabbMin, const float* aabbMax) {
+void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade, const float* aabbMin, const float* aabbMax, uint32_t boneOffset, uint32_t boneCount) {
   if (!begun || world == nullptr || vb == 0 || ib == 0 || count == 0) {
     return;
+  }
+  uint32_t useBoneOffset = 0xFFFFFFFFu;
+  uint32_t useBoneCount = 0;
+  if (boneCount > 0 && boneOffset != 0xFFFFFFFFu && static_cast<uint64_t>(boneOffset) + boneCount <= static_cast<uint64_t>(bonePool.size() / 16ull)) {
+    useBoneOffset = boneOffset;
+    useBoneCount = boneCount;
   }
   ShadowDrawItem item;
   std::memcpy(item.world, world, sizeof(item.world));
@@ -3997,6 +4051,8 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
   item.ib = ib;
   item.start = start;
   item.count = count;
+  item.boneOffset = useBoneOffset;
+  item.boneCount = useBoneCount;
   shadowDraws.push_back(item);
   if (CullWorldAABB(world, aabbMin, aabbMax)) {
     return;
@@ -4009,6 +4065,8 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
     fwd.ib = ib;
     fwd.start = start;
     fwd.count = count;
+    fwd.boneOffset = useBoneOffset;
+    fwd.boneCount = useBoneCount;
     fwd.mat = use;
     forwardDraws.push_back(fwd);
     return;
@@ -4019,6 +4077,8 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
   gi.ib = ib;
   gi.start = start;
   gi.count = count;
+  gi.boneOffset = useBoneOffset;
+  gi.boneCount = useBoneCount;
   gi.mat = use;
   gi.lodFade = lodFade;
   gi.matHash = MatHash(use);
@@ -4039,6 +4099,61 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
     gi.bmax[2] = 1.0f;
   }
   geoQueue.push_back(gi);
+}
+uint32_t DeferredRenderer::AddBoneMatrices(const float* matrices, uint32_t count) {
+  if (!begun || matrices == nullptr || count == 0) {
+    return 0xFFFFFFFFu;
+  }
+  uint64_t offset = static_cast<uint64_t>(bonePool.size() / 16ull);
+  if (offset + static_cast<uint64_t>(count) > 65536ull) {
+    return 0xFFFFFFFFu;
+  }
+  bonePool.insert(bonePool.end(), matrices, matrices + static_cast<size_t>(count) * 16ull);
+  return static_cast<uint32_t>(offset);
+}
+void DeferredRenderer::UploadBones() {
+  boneContentHash = 0;
+  if (rhi == nullptr || bonePool.empty()) {
+    return;
+  }
+  uint64_t hash = 1469598103934665603ull;
+  const unsigned char* bytes = reinterpret_cast<const unsigned char*>(bonePool.data());
+  size_t byteCount = bonePool.size() * sizeof(float);
+  for (size_t i = 0; i < byteCount; ++i) {
+    hash ^= static_cast<uint64_t>(bytes[i]);
+    hash *= 1099511628211ull;
+  }
+  boneContentHash = hash == 0 ? 1 : hash;
+  uint64_t rows64 = static_cast<uint64_t>(bonePool.size()) / 4ull;
+  if (rows64 == 0 || rows64 > 262144ull) {
+    boneContentHash = 0;
+    return;
+  }
+  uint32_t rows = static_cast<uint32_t>(rows64);
+  if (boneBuf == 0 || boneCapacityRows < rows) {
+    uint64_t cap = boneCapacityRows == 0 ? 256ull : static_cast<uint64_t>(boneCapacityRows) * 2ull;
+    if (cap < rows) {
+      cap = rows;
+    }
+    if (cap > 262144ull) {
+      cap = 262144ull;
+    }
+    RHIStructBuffer buf = rhi->CreateStructBuffer(static_cast<uint32_t>(cap), 16, nullptr);
+    if (buf == 0) {
+      boneContentHash = 0;
+      return;
+    }
+    if (boneBuf != 0) {
+      rhi->DestroyStructBuffer(boneBuf);
+    }
+    boneBuf = buf;
+    boneCapacityRows = static_cast<uint32_t>(cap);
+  }
+  boneUploadScratch.resize(static_cast<size_t>(boneCapacityRows) * 4ull, 0.0f);
+  std::memcpy(boneUploadScratch.data(), bonePool.data(), bonePool.size() * sizeof(float));
+  if (!rhi->UpdateStructBuffer(boneBuf, boneUploadScratch.data(), boneUploadScratch.size() * sizeof(float))) {
+    boneContentHash = 0;
+  }
 }
 uint64_t DeferredRenderer::MatHash(const DeferredMaterial& mat) {
   uint64_t h = 1469598103934665603ull;
@@ -4063,6 +4178,8 @@ uint64_t DeferredRenderer::GeoGroupKey(const GeoBatchItem& item) {
   mix(&item.start, sizeof(item.start));
   mix(&item.count, sizeof(item.count));
   mix(&item.matHash, sizeof(item.matHash));
+  mix(&item.boneOffset, sizeof(item.boneOffset));
+  mix(&item.boneCount, sizeof(item.boneCount));
   uint32_t fadeBits = 0;
   std::memcpy(&fadeBits, &item.lodFade, sizeof(fadeBits));
   mix(&fadeBits, sizeof(fadeBits));
@@ -4143,18 +4260,27 @@ void DeferredRenderer::DrawGeoSingle(const GeoBatchItem& item) {
   if (rhi == nullptr) {
     return;
   }
+  bool skinned = item.boneCount > 0 && item.boneOffset != 0xFFFFFFFFu;
   const DeferredMaterial& use = item.mat;
   GeoConstants gc;
   std::memcpy(gc.world, item.world, sizeof(gc.world));
   std::memcpy(gc.view, lastView, sizeof(gc.view));
   std::memcpy(gc.proj, lastProj, sizeof(gc.proj));
   rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-  rhi->SetVertexShader(geoVS);
-  rhi->SetInputLayout(layout);
+  rhi->SetVertexShader(skinned ? geoVSSkinned : geoVS);
+  rhi->SetInputLayout(skinned ? skinnedLayout : layout);
   rhi->SetPixelShader(geoPS);
   rhi->SetVertexConstantBuffer(0, geoCB);
+  if (skinned) {
+    uint32_t boneData[4] = { item.boneOffset, 0, 0, 0 };
+    rhi->UpdateConstantBuffer(boneCB, boneData, sizeof(boneData));
+    rhi->SetVertexConstantBuffer(1, boneCB);
+    rhi->SetVertexSRV(0, boneBuf);
+  } else {
+    rhi->SetVertexSRV(0, 0);
+  }
   SetGeoMaterial(use, item.lodFade);
-  bool useTess = tessOn && tessHS != 0 && tessDS != 0 && tessCB != 0;
+  bool useTess = !skinned && tessOn && tessHS != 0 && tessDS != 0 && tessCB != 0;
   if (useTess) {
     float tc[4] = { tessFactor, tessDisp, ((use.texFlags & 8u) != 0 && use.heightTex != 0) ? 1.0f : 0.0f, 0.0f };
     rhi->UpdateConstantBuffer(tessCB, &tc, sizeof(tc));
@@ -4173,16 +4299,46 @@ void DeferredRenderer::DrawGeoSingle(const GeoBatchItem& item) {
   }
   rhi->SetVertexBuffer(item.vb, 0);
   rhi->SetIndexBuffer(item.ib);
-  if (OccDrawBegin(item.vb, item.ib, item.start, item.count, item.world)) {
+  if (skinned) {
+    rhi->DrawIndexed(item.count, item.start, 0);
+    ++stats.geometryDraws;
+    stats.geometryTris += item.count / 3;
+  } else if (OccDrawBegin(item.vb, item.ib, item.start, item.count, item.world)) {
     rhi->DrawIndexed(item.count, item.start, 0);
     OccDrawEnd();
     ++stats.geometryDraws;
     stats.geometryTris += item.count / 3;
   }
 }
+void DeferredRenderer::DrawCasterVS(const ShadowDrawItem& item, RHIVertexShader vs, RHIVertexShader skinnedVS, RHIConstBuffer boneBuffer) {
+  bool skinned = item.boneCount > 0 && item.boneOffset != 0xFFFFFFFFu;
+  if (skinned) {
+    uint32_t boneData[4] = { item.boneOffset, 0, 0, 0 };
+    rhi->UpdateConstantBuffer(boneBuffer, boneData, sizeof(boneData));
+    rhi->SetVertexConstantBuffer(1, boneBuffer);
+    rhi->SetVertexShader(skinnedVS);
+    rhi->SetInputLayout(skinnedLayout);
+    rhi->SetVertexSRV(0, boneBuf);
+  } else {
+    rhi->SetVertexShader(vs);
+    rhi->SetInputLayout(layout);
+    rhi->SetVertexSRV(0, 0);
+  }
+  rhi->SetVertexBuffer(item.vb, 0);
+  rhi->SetIndexBuffer(item.ib);
+  rhi->DrawIndexed(item.count, item.start, 0);
+}
 void DeferredRenderer::DrawGeoInstanced(uint64_t key, const std::vector<size_t>& indices) {
   if (rhi == nullptr || indices.empty()) {
     return;
+  }
+  for (size_t i : indices) {
+    if (geoQueue[i].boneCount > 0) {
+      for (size_t j : indices) {
+        DrawGeoSingle(geoQueue[j]);
+      }
+      return;
+    }
   }
   if (!batchOk || indices.size() < 2) {
     for (size_t i : indices) {
@@ -4293,6 +4449,14 @@ void DeferredRenderer::DrawGeoInstanced(uint64_t key, const std::vector<size_t>&
 void DeferredRenderer::DrawGeoGpuDriven(const std::vector<size_t>& indices) {
   if (rhi == nullptr || indices.empty()) {
     return;
+  }
+  for (size_t i : indices) {
+    if (geoQueue[i].boneCount > 0) {
+      for (size_t j : indices) {
+        DrawGeoSingle(geoQueue[j]);
+      }
+      return;
+    }
   }
   const GeoBatchItem& first = geoQueue[indices[0]];
   uint32_t n = static_cast<uint32_t>(indices.size());
@@ -4694,9 +4858,7 @@ void DeferredRenderer::RunOverdrawPass() {
     std::memcpy(gc.view, lastView, sizeof(gc.view));
     std::memcpy(gc.proj, lastProj, sizeof(gc.proj));
     rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-    rhi->SetVertexBuffer(shadowDraws[di].vb, 0);
-    rhi->SetIndexBuffer(shadowDraws[di].ib);
-    rhi->DrawIndexed(shadowDraws[di].count, shadowDraws[di].start, 0);
+    DrawCasterVS(shadowDraws[di], depthVS, depthVSSkinned, boneCB);
   }
   blend.enable = false;
   rhi->SetBlendState(blend);
@@ -4748,9 +4910,7 @@ void DeferredRenderer::RunUvPass() {
     std::memcpy(gc.view, lastView, sizeof(gc.view));
     std::memcpy(gc.proj, lastProj, sizeof(gc.proj));
     rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-    rhi->SetVertexBuffer(shadowDraws[di].vb, 0);
-    rhi->SetIndexBuffer(shadowDraws[di].ib);
-    rhi->DrawIndexed(shadowDraws[di].count, shadowDraws[di].start, 0);
+    DrawCasterVS(shadowDraws[di], uvVS, uvVSSkinned, boneCB);
   }
   ds.depthWrite = true;
   rhi->SetDepthStencilState(ds);
@@ -5073,6 +5233,19 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
   }
   for (size_t oi = 0; oi < order.size(); ++oi) {
     const ForwardDrawItem& d = forwardDraws[order[oi]];
+    bool skinned = d.boneCount > 0 && d.boneOffset != 0xFFFFFFFFu;
+    if (skinned) {
+      uint32_t boneData[4] = { d.boneOffset, 0, 0, 0 };
+      rhi->UpdateConstantBuffer(boneCB, boneData, sizeof(boneData));
+      rhi->SetVertexConstantBuffer(1, boneCB);
+      rhi->SetVertexShader(geoVSSkinned);
+      rhi->SetInputLayout(skinnedLayout);
+      rhi->SetVertexSRV(0, boneBuf);
+    } else {
+      rhi->SetVertexShader(geoVS);
+      rhi->SetInputLayout(layout);
+      rhi->SetVertexSRV(0, 0);
+    }
     GeoConstants gc;
     std::memcpy(gc.world, d.world, sizeof(gc.world));
     std::memcpy(gc.view, lastView, sizeof(gc.view));
@@ -5127,13 +5300,18 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
     rhi->SetRasterizerState(rs);
     rhi->SetVertexBuffer(d.vb, 0);
     rhi->SetIndexBuffer(d.ib);
-    if (OccDrawBegin(d.vb, d.ib, d.start, d.count, d.world)) {
+    if (skinned) {
+      rhi->DrawIndexed(d.count, d.start, 0);
+      ++stats.forwardDraws;
+      stats.forwardTris += d.count / 3;
+    } else if (OccDrawBegin(d.vb, d.ib, d.start, d.count, d.world)) {
       rhi->DrawIndexed(d.count, d.start, 0);
       OccDrawEnd();
       ++stats.forwardDraws;
       stats.forwardTris += d.count / 3;
     }
   }
+  rhi->SetVertexSRV(0, 0);
   rhi->SetPixelTexture2D(0, 0);
   rhi->SetPixelTexture2D(1, 0);
   rhi->SetPixelTexture2D(2, 0);
@@ -5179,6 +5357,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
     return;
   }
   begun = false;
+  UploadBones();
   stats.msSubmit = ElapsedMs(frameStart, std::chrono::steady_clock::now());
   bool shadowKicked = false;
   if (mtShadows && !captureMode && shadowsAvailable && !shadowDraws.empty()) {

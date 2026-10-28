@@ -5157,6 +5157,106 @@ bool TestDeferredNull() {  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API
   Kizuri::DestroyRHI(rhi);
   return true;
 }
+bool TestDeferredBones() {
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  float verts[3 * 22] = { 0.0f };
+  for (int v = 0; v < 3; ++v) {
+    verts[v * 22 + 0] = (v == 1) ? 1.0f : 0.0f;
+    verts[v * 22 + 1] = (v == 2) ? 1.0f : 0.0f;
+    verts[v * 22 + 5] = 1.0f;
+    verts[v * 22 + 8] = 1.0f;
+    verts[v * 22 + 11] = 1.0f;
+    verts[v * 22 + 18] = 1.0f;
+  }
+  uint32_t idxs[3] = { 0, 1, 2 };
+  Kizuri::RHIBuffer svb = rhi->CreateBuffer(sizeof(verts), 88, false, verts);
+  Kizuri::RHIBuffer sib = rhi->CreateBuffer(sizeof(idxs), 4, true, idxs);
+  if (svb == 0 || sib == 0) {
+    renderer.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::RenderDirectionalLight dl;
+  dl.dir[0] = 0.0f;
+  dl.dir[1] = -1.0f;
+  dl.dir[2] = 0.0f;
+  dl.color[0] = 1.0f;
+  dl.color[1] = 1.0f;
+  dl.color[2] = 1.0f;
+  dl.intensity = 2.0f;
+  dl.castShadow = true;
+  dl.effectiveSize = 0.5f;
+  dl.shadowSize = 1024;
+  dl.cascades = 2;
+  dl.lambda = 0.5f;
+  renderer.AddDirectionalLight(dl);
+  float view[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float proj[16] = { 1,0,0,0, 0,1,0,0, 0,0,1.1111112f,1, 0,0,-1.1111112f,0 };
+  float cam[3] = { 0, 0, 5 };
+  float ident[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float boneA[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float boneB[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0.25f,0,0,1 };
+  float boneC[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0.5f,0,0,1 };
+  float bmin[3] = { -1, -1, -1 };
+  float bmax[3] = { 1, 1, 1 };
+  Kizuri::DeferredMaterial mat;
+  bool ok = true;
+  ok = ok && renderer.AddBoneMatrices(boneA, 1) == 0xFFFFFFFFu;
+  renderer.BeginObjects(view, proj);
+  uint32_t off0 = renderer.AddBoneMatrices(boneA, 1);
+  uint32_t off1 = renderer.AddBoneMatrices(boneB, 1);
+  ok = ok && off0 == 0 && off1 == 1;
+  ok = ok && renderer.AddBoneMatrices(nullptr, 1) == 0xFFFFFFFFu;
+  ok = ok && renderer.AddBoneMatrices(boneA, 0) == 0xFFFFFFFFu;
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off1, 1);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().geometryDraws == 3;
+  ok = ok && renderer.GetStats().shadowDraws >= 3;
+  ok = ok && !renderer.GetStats().shadowCached;
+  renderer.BeginObjects(view, proj);
+  off0 = renderer.AddBoneMatrices(boneA, 1);
+  off1 = renderer.AddBoneMatrices(boneB, 1);
+  ok = ok && off0 == 0 && off1 == 1;
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off1, 1);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().shadowCached;
+  renderer.BeginObjects(view, proj);
+  off0 = renderer.AddBoneMatrices(boneA, 1);
+  off1 = renderer.AddBoneMatrices(boneC, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off1, 1);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && !renderer.GetStats().shadowCached;
+  renderer.SetDebugView(15);
+  renderer.BeginObjects(view, proj);
+  off0 = renderer.AddBoneMatrices(boneA, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetDebugView() == 15;
+  renderer.SetDebugView(16);
+  renderer.BeginObjects(view, proj);
+  off0 = renderer.AddBoneMatrices(boneA, 1);
+  renderer.DrawObjectEx(ident, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, off0, 1);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetDebugView() == 16;
+  renderer.SetDebugView(0);
+  rhi->DestroyBuffer(svb);
+  rhi->DestroyBuffer(sib);
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestSceneCrud() {
   Kizuri::Scene scene;
   Kizuri::EntityId a = scene.CreateEntity("Alpha");
@@ -12951,6 +13051,7 @@ int main() {
   failures += Check("PBR-Directional", TestPBR());
   failures += Check("ShaderFiles", TestShaderFiles());
   failures += Check("Deferred-Null", TestDeferredNull());
+  failures += Check("Deferred-Bones", TestDeferredBones());
   failures += Check("Scene-CRUD", TestSceneCrud());
   failures += Check("Scene-Duplicate", TestSceneDuplicate());
   failures += Check("PlayScene-SnapshotIsolation", TestPlaySceneSnapshotIsolation());
