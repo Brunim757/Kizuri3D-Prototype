@@ -1026,6 +1026,67 @@ void EditorApp::DrawGenericComponent(Entity* e, const ComponentTypeDesc& desc) {
       }
       break;
     }
+    case InspectorFieldKind::AnimatorClip: {
+      std::string* value = reinterpret_cast<std::string*>(ptr);
+      const MeshRecord* record = nullptr;
+      if (e->hasMesh && !e->meshGuid.empty()) {
+        record = assets.GetByGuid(e->meshGuid);
+      }
+      const size_t clipCount = record != nullptr ? record->data.animations.size() : 0;
+      if (clipCount == 0) {
+        char buffer[512];
+        std::snprintf(buffer, sizeof(buffer), "%s", value->c_str());
+        PropertyLabel(field.label);
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::InputText("##value", buffer, sizeof(buffer))) {
+          *value = buffer;
+          changed = true;
+        }
+        if (record == nullptr) {
+          ImGui::TextDisabled("Assign a skinned mesh to choose a clip");
+        } else {
+          ImGui::TextDisabled("Mesh has no animation clips");
+        }
+        break;
+      }
+      std::string items = "None";
+      int current = 0;
+      for (size_t clip = 0; clip < clipCount; ++clip) {
+        const MeshAnimClipData& animation = record->data.animations[clip];
+        items.push_back('\0');
+        if (animation.duration > 0.0f) {
+          char label[320];
+          std::snprintf(label, sizeof(label), "%s  (%.2fs)", animation.name.c_str(), animation.duration);
+          items += label;
+        } else {
+          items += animation.name;
+        }
+        if (*value == animation.name) {
+          current = static_cast<int>(clip) + 1;
+        }
+      }
+      bool missing = false;
+      if (!value->empty() && current == 0) {
+        missing = true;
+        items.push_back('\0');
+        items += "Missing: " + *value;
+        current = static_cast<int>(clipCount) + 1;
+      }
+      items.push_back('\0');
+      PropertyLabel(field.label);
+      if (ImGui::Combo("##value", &current, items.c_str())) {
+        if (current == 0) {
+          value->clear();
+        } else if (current > 0 && static_cast<size_t>(current) <= clipCount) {
+          *value = record->data.animations[static_cast<size_t>(current - 1)].name;
+        }
+        changed = true;
+      }
+      if (missing) {
+        ImGui::TextDisabled("Clip not found in mesh");
+      }
+      break;
+    }
     }
     ImGui::PopID();
   }

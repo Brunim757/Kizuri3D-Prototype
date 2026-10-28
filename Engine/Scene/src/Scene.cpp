@@ -195,6 +195,12 @@ void MakeDefaultAudioSource(AudioSourceData& a) {
   a.playing = true;
   a.bus = 0;
 }
+void MakeDefaultAnimator(AnimatorData& a) {
+  a.clipName.clear();
+  a.speed = 1.0f;
+  a.loop = true;
+  a.playing = true;
+}
 void EulerDegToQuat(const float euler[3], float quat[4]) {
   Transform t;
   MakeIdentityTransform(t);
@@ -435,6 +441,8 @@ EntityId Scene::CreateEntity(const std::string& name) {
     s.entity.hasFog = false;
     MakeDefaultAudioSource(s.entity.audioSource);
     s.entity.hasAudioSource = false;
+    MakeDefaultAnimator(s.entity.animator);
+    s.entity.hasAnimator = false;
     MakeDefaultRigidbody(s.entity.rigidbody);
     s.entity.hasRigidbody = false;
     s.entity.partMaterials.clear();
@@ -470,6 +478,8 @@ EntityId Scene::CreateEntity(const std::string& name) {
     s.entity.hasFog = false;
     MakeDefaultAudioSource(s.entity.audioSource);
     s.entity.hasAudioSource = false;
+    MakeDefaultAnimator(s.entity.animator);
+    s.entity.hasAnimator = false;
     MakeDefaultRigidbody(s.entity.rigidbody);
     s.entity.hasRigidbody = false;
     s.entity.partMaterials.clear();

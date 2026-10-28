@@ -2563,6 +2563,43 @@ bool TestAudioSourceSerialize() {
   }
   return false;
 }
+bool TestAnimatorSerialize() {
+  Kizuri::AnimatorData defaults;
+  Kizuri::MakeDefaultAnimator(defaults);
+  if (!defaults.clipName.empty() || defaults.speed != 1.0f || !defaults.loop || !defaults.playing) {
+    return false;
+  }
+  Kizuri::Scene scene;
+  Kizuri::EntityId id = scene.CreateEntity("anim");
+  Kizuri::Entity* e = scene.Get(id);
+  if (e == nullptr || e->hasAnimator) {
+    return false;
+  }
+  e->hasAnimator = true;
+  Kizuri::MakeDefaultAnimator(e->animator);
+  e->animator.clipName = "Walk \"Fast\"";
+  e->animator.speed = 1.75f;
+  e->animator.loop = false;
+  e->animator.playing = false;
+  const char* tmp = "kizuri_test_animator_tmp.kzscene";
+  if (!Kizuri::SaveSceneToFile(scene, tmp)) {
+    return false;
+  }
+  Kizuri::Scene back;
+  const bool ok = Kizuri::LoadSceneFromFile(back, tmp, nullptr);
+  std::remove(tmp);
+  if (!ok) {
+    return false;
+  }
+  const std::vector<Kizuri::EntityId> all = back.All();
+  for (size_t i = 0; i < all.size(); ++i) {
+    const Kizuri::Entity* be = back.Get(all[i]);
+    if (be != nullptr && be->hasAnimator) {
+      return be->animator.clipName == "Walk \"Fast\"" && std::fabs(be->animator.speed - 1.75f) < 1e-5f && !be->animator.loop && !be->animator.playing;
+    }
+  }
+  return false;
+}
 bool TestAudioPartialUpdate() {
   Kizuri::AudioEngine engine;
   if (!engine.Initialize(48000, 2, false)) {
@@ -2840,15 +2877,16 @@ bool TestSceneAllComponentsRoundTrip() {
 }
 bool TestComponentRegistry() {
   Kizuri::ComponentRegistry& reg = Kizuri::ComponentRegistry::Instance();
-  if (reg.Count() < 11) {
+  if (reg.Count() < 12) {
     return false;
   }
   const Kizuri::ComponentTypeDesc* rigid = reg.FindByName("Rigidbody");
   const Kizuri::ComponentTypeDesc* audio = reg.FindByName("Audio Source");
-  if (rigid == nullptr || audio == nullptr) {
+  const Kizuri::ComponentTypeDesc* animator = reg.FindByName("Animator");
+  if (rigid == nullptr || audio == nullptr || animator == nullptr) {
     return false;
   }
-  if (rigid->id == audio->id) {
+  if (rigid->id == audio->id || rigid->id == animator->id || audio->id == animator->id) {
     return false;
   }
   if (Kizuri::FindComponentType("Rigidbody") != rigid->id) {
@@ -2955,6 +2993,7 @@ size_t InspectorFieldSize(Kizuri::InspectorFieldKind kind) {
   case Kizuri::InspectorFieldKind::Texture:
   case Kizuri::InspectorFieldKind::Mesh:
   case Kizuri::InspectorFieldKind::AudioClip:
+  case Kizuri::InspectorFieldKind::AnimatorClip:
     return sizeof(std::string);
   }
   return 0;
@@ -3135,6 +3174,21 @@ bool TestComponentEquality() {
   }
   q.bloom = 0.1f;
   if (Kizuri::PostEqual(p, q)) {
+    return false;
+  }
+  Kizuri::AnimatorData an;
+  Kizuri::MakeDefaultAnimator(an);
+  Kizuri::AnimatorData bn = an;
+  if (!Kizuri::AnimatorEqual(an, bn)) {
+    return false;
+  }
+  bn.speed = 2.0f;
+  if (Kizuri::AnimatorEqual(an, bn)) {
+    return false;
+  }
+  bn = an;
+  bn.clipName = "Run";
+  if (Kizuri::AnimatorEqual(an, bn)) {
     return false;
   }
   return true;
@@ -5343,6 +5397,11 @@ bool TestSceneDuplicate() {
   Kizuri::MakeDefaultAudioSource(src->audioSource);
   src->audioSource.clipPath = "clip-dup.wav";
   src->audioSource.volume = 0.4f;
+  src->hasAnimator = true;
+  Kizuri::MakeDefaultAnimator(src->animator);
+  src->animator.clipName = "Run";
+  src->animator.speed = 1.25f;
+  src->animator.loop = false;
   src->hasPost = true;
   Kizuri::MakeDefaultPost(src->post);
   src->post.exposure = 1.8f;
@@ -5387,6 +5446,9 @@ bool TestSceneDuplicate() {
     return false;
   }
   if (!e->hasRigidbody || e->rigidbody.mass != 3.0f || !e->hasAudioSource || e->audioSource.clipPath != "clip-dup.wav" || e->audioSource.volume != 0.4f) {
+    return false;
+  }
+  if (!e->hasAnimator || e->animator.clipName != "Run" || e->animator.speed != 1.25f || e->animator.loop) {
     return false;
   }
   if (!e->hasPost || e->post.exposure != 1.8f || !e->hasFog || e->fog.density != 0.07f) {
@@ -12992,6 +13054,7 @@ int main() {
   failures += Check("AudioSourceProperties", TestAudioSourceProperties());
   failures += Check("GameWorldAudio", TestGameWorldAudio());
   failures += Check("AudioSourceSerialize", TestAudioSourceSerialize());
+  failures += Check("AnimatorSerialize", TestAnimatorSerialize());
   failures += Check("ComponentRegistry", TestComponentRegistry());
   failures += Check("SceneAllComponents", TestSceneAllComponentsRoundTrip());
   failures += Check("ComponentUndo", TestComponentUndo());

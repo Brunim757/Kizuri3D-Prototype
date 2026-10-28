@@ -25,7 +25,8 @@ enum class InspectorFieldKind : uint8_t {
   Texture,
   Mesh,
   AudioClip,
-  AudioBus
+  AudioBus,
+  AnimatorClip
 };
 enum class InspectorConditionOp : uint8_t {
   Equals,
@@ -76,6 +77,7 @@ bool DecalEqual(const DecalData& a, const DecalData& b);
 bool LodEqual(const LodData& a, const LodData& b);
 bool RigidbodyEqual(const RigidbodyData& a, const RigidbodyData& b);
 bool AudioSourceEqual(const AudioSourceData& a, const AudioSourceData& b);
+bool AnimatorEqual(const AnimatorData& a, const AnimatorData& b);
 bool LightmapEqual(const LightmapData& a, const LightmapData& b);
 bool ProbeEqual(const ProbeData& a, const ProbeData& b);
 bool PostEqual(const PostData& a, const PostData& b);
@@ -93,6 +95,7 @@ public:
   static constexpr ComponentTypeId kProbe = 8;
   static constexpr ComponentTypeId kPost = 9;
   static constexpr ComponentTypeId kFog = 10;
+  static constexpr ComponentTypeId kAnimator = 11;
   static ComponentRegistry& Instance();
   void Register(const ComponentTypeDesc& desc);
   void SetSerializer(ComponentTypeId id, ComponentWriteFn write, ComponentReadFn read);

@@ -161,6 +161,12 @@ struct AudioSourceData {
   bool playing = true;
   int bus = 0;
 };
+struct AnimatorData {
+  std::string clipName;
+  float speed = 1.0f;
+  bool loop = true;
+  bool playing = true;
+};
 struct DecalData {  float size[3];
   float life;
   std::string texGuid;
@@ -226,6 +232,8 @@ struct Entity {
   bool hasRigidbody;
   AudioSourceData audioSource;
   bool hasAudioSource;
+  AnimatorData animator;
+  bool hasAnimator;
   EntityId parent;
   std::vector<EntityId> children;
   bool isStatic = false;
@@ -273,6 +281,7 @@ void MakeDefaultPost(PostData& p);
 void MakeDefaultFog(FogData& f);
 void MakeDefaultRigidbody(RigidbodyData& r);
 void MakeDefaultAudioSource(AudioSourceData& a);
+void MakeDefaultAnimator(AnimatorData& a);
 void EntityForward(const Transform& t, float dir[3]);
 void EulerDegToQuat(const float euler[3], float quat[4]);
 void QuatToEulerDeg(const float quat[4], float euler[3]);

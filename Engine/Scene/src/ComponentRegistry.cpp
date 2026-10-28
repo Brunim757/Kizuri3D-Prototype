@@ -37,6 +37,9 @@ void ResetRigidbody(void* data) {
 void ResetAudioSource(void* data) {
   MakeDefaultAudioSource(*static_cast<AudioSourceData*>(data));
 }
+void ResetAnimator(void* data) {
+  MakeDefaultAnimator(*static_cast<AnimatorData*>(data));
+}
 template <typename T>
 void CtorComponent(void* data) {
   new (data) T();
@@ -72,6 +75,9 @@ bool EqualRigidbodyData(const void* a, const void* b) {
 }
 bool EqualAudioSourceData(const void* a, const void* b) {
   return AudioSourceEqual(*static_cast<const AudioSourceData*>(a), *static_cast<const AudioSourceData*>(b));
+}
+bool EqualAnimatorData(const void* a, const void* b) {
+  return AnimatorEqual(*static_cast<const AnimatorData*>(a), *static_cast<const AnimatorData*>(b));
 }
 bool EqualProbeData(const void* a, const void* b) {
   return ProbeEqual(*static_cast<const ProbeData*>(a), *static_cast<const ProbeData*>(b));
@@ -240,6 +246,12 @@ const InspectorFieldDesc kAudioSourceFields[] = {
   { "Playing", offsetof(AudioSourceData, playing), InspectorFieldKind::Bool },
   { "Bus", offsetof(AudioSourceData, bus), InspectorFieldKind::AudioBus }
 };
+const InspectorFieldDesc kAnimatorFields[] = {
+  { "Clip", offsetof(AnimatorData, clipName), InspectorFieldKind::AnimatorClip },
+  { "Speed", offsetof(AnimatorData, speed), InspectorFieldKind::Float, 0.01f, -10.0f, 10.0f },
+  { "Loop", offsetof(AnimatorData, loop), InspectorFieldKind::Bool },
+  { "Playing", offsetof(AnimatorData, playing), InspectorFieldKind::Bool }
+};
 const InspectorFieldDesc kProbeFields[] = {
   { "Probe Size", offsetof(ProbeData, size), InspectorFieldKind::Vec3, 0.1f, 0.5f, 100.0f },
   { "Probe Intensity", offsetof(ProbeData, intensity), InspectorFieldKind::Float, 0.05f, 0.0f, 4.0f }
@@ -286,6 +298,7 @@ void RegisterAll(ComponentRegistry& reg) {
   RegisterComponent<LightmapData>(reg, ComponentRegistry::kLightmap, "Lightmap", offsetof(Entity, lightmap), offsetof(Entity, hasLightmap), &ResetLightmap, kLightmapFields, sizeof(kLightmapFields) / sizeof(kLightmapFields[0]), &EqualLightmapData);
   RegisterComponent<RigidbodyData>(reg, ComponentRegistry::kRigidbody, "Rigidbody", offsetof(Entity, rigidbody), offsetof(Entity, hasRigidbody), &ResetRigidbody, kRigidbodyFields, sizeof(kRigidbodyFields) / sizeof(kRigidbodyFields[0]), &EqualRigidbodyData);
   RegisterComponent<AudioSourceData>(reg, ComponentRegistry::kAudioSource, "Audio Source", offsetof(Entity, audioSource), offsetof(Entity, hasAudioSource), &ResetAudioSource, kAudioSourceFields, sizeof(kAudioSourceFields) / sizeof(kAudioSourceFields[0]), &EqualAudioSourceData);
+  RegisterComponent<AnimatorData>(reg, ComponentRegistry::kAnimator, "Animator", offsetof(Entity, animator), offsetof(Entity, hasAnimator), &ResetAnimator, kAnimatorFields, sizeof(kAnimatorFields) / sizeof(kAnimatorFields[0]), &EqualAnimatorData);
   RegisterComponent<ProbeData>(reg, ComponentRegistry::kProbe, "Reflection Probe", offsetof(Entity, probe), offsetof(Entity, hasProbe), &ResetProbe, kProbeFields, sizeof(kProbeFields) / sizeof(kProbeFields[0]), &EqualProbeData);
   RegisterComponent<PostData>(reg, ComponentRegistry::kPost, "Post Volume", offsetof(Entity, post), offsetof(Entity, hasPost), &ResetPost, kPostFields, sizeof(kPostFields) / sizeof(kPostFields[0]), &EqualPostData);
   RegisterComponent<FogData>(reg, ComponentRegistry::kFog, "Fog Volume", offsetof(Entity, fog), offsetof(Entity, hasFog), &ResetFog, kFogFields, sizeof(kFogFields) / sizeof(kFogFields[0]), &EqualFogData);
@@ -520,6 +533,9 @@ bool RigidbodyEqual(const RigidbodyData& a, const RigidbodyData& b) {
 }
 bool AudioSourceEqual(const AudioSourceData& a, const AudioSourceData& b) {
   return a.clipPath == b.clipPath && a.volume == b.volume && a.minDistance == b.minDistance && a.maxDistance == b.maxDistance && a.rolloff == b.rolloff && a.rolloffModel == b.rolloffModel && a.loop == b.loop && a.spatial == b.spatial && a.playing == b.playing && a.bus == b.bus;
+}
+bool AnimatorEqual(const AnimatorData& a, const AnimatorData& b) {
+  return a.clipName == b.clipName && a.speed == b.speed && a.loop == b.loop && a.playing == b.playing;
 }
 bool LightmapEqual(const LightmapData& a, const LightmapData& b) {
   return a.texGuid == b.texGuid && a.intensity == b.intensity;

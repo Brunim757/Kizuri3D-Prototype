@@ -4,6 +4,7 @@
 #include "Kizuri/Log.h"
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <unordered_map>
 namespace Kizuri {
 namespace {
@@ -197,6 +198,14 @@ static void WriteAudioSource(std::FILE* fp, const Entity* e) {
         std::fprintf(fp, "AUDIOSOURCE \"%s\" %.9g %.9g %.9g %.9g %d %d %d %d %d\n", EscapeName(a.clipPath).c_str(), a.volume, a.minDistance, a.maxDistance, a.rolloff, a.rolloffModel, a.loop ? 1 : 0, a.spatial ? 1 : 0, a.playing ? 1 : 0, a.bus);
 }
 
+static void WriteAnimator(std::FILE* fp, const Entity* e) {
+  if (!e->hasAnimator) {
+    return;
+  }
+        const AnimatorData& a = e->animator;
+        std::fprintf(fp, "ANIMATOR \"%s\" %.9g %d %d\n", EscapeName(a.clipName).c_str(), a.speed, a.loop ? 1 : 0, a.playing ? 1 : 0);
+}
+
 static void WriteProbe(std::FILE* fp, const Entity* e) {
   if (!e->hasProbe) {
     return;
@@ -312,6 +321,8 @@ struct PendingEntity {
   bool hasRigidbody;
   AudioSourceData audioSource;
   bool hasAudioSource;
+  AnimatorData animator;
+  bool hasAnimator;
   ProbeData probe;
   bool hasProbe;
   PostData post;
@@ -1090,6 +1101,29 @@ static bool ReadAudioSource(const std::string& field, const std::string& rest, v
   return false;
 }
 
+static bool ReadAnimator(const std::string& field, const std::string& rest, void* entity) {
+  PendingEntity* e = static_cast<PendingEntity*>(entity);
+  if (field == "ANIMATOR") {
+          size_t pos = 0;
+          std::string clip;
+          if (!ParseQuoted(rest, pos, clip)) {
+            return false;
+          }
+          float av[3] = { 1.0f, 1.0f, 1.0f };
+          if (!ParseFloats(rest, pos, av, 3)) {
+            return false;
+          }
+          MakeDefaultAnimator(e->animator);
+          e->animator.clipName = clip;
+          e->animator.speed = std::isfinite(av[0]) ? av[0] : 1.0f;
+          e->animator.loop = av[1] != 0.0f;
+          e->animator.playing = av[2] != 0.0f;
+          e->hasAnimator = true;
+          return true;
+  }
+  return false;
+}
+
 static bool ReadProbe(const std::string& field, const std::string& rest, void* entity) {
   PendingEntity* e = static_cast<PendingEntity*>(entity);
   if (field == "PROBE") {
@@ -1168,6 +1202,7 @@ void RegisterSceneComponentSerializers() {
   reg.SetSerializer(ComponentRegistry::kLightmap, &WriteLightmap, &ReadLightmap);
   reg.SetSerializer(ComponentRegistry::kRigidbody, &WriteRigidbody, &ReadRigidbody);
   reg.SetSerializer(ComponentRegistry::kAudioSource, &WriteAudioSource, &ReadAudioSource);
+  reg.SetSerializer(ComponentRegistry::kAnimator, &WriteAnimator, &ReadAnimator);
   reg.SetSerializer(ComponentRegistry::kProbe, &WriteProbe, &ReadProbe);
   reg.SetSerializer(ComponentRegistry::kPost, &WritePost, &ReadPost);
   reg.SetSerializer(ComponentRegistry::kFog, &WriteFog, &ReadFog);
@@ -1228,6 +1263,7 @@ bool LoadSceneFromFile(Scene& scene, const std::string& path, LogStore* log) {
       MakeDefaultLightmap(pe.lightmap);
       MakeDefaultRigidbody(pe.rigidbody);
       MakeDefaultAudioSource(pe.audioSource);
+      MakeDefaultAnimator(pe.animator);
       MakeDefaultProbe(pe.probe);
       MakeDefaultPost(pe.post);
       MakeDefaultFog(pe.fog);
@@ -1240,6 +1276,7 @@ bool LoadSceneFromFile(Scene& scene, const std::string& path, LogStore* log) {
       pe.hasLightmap = false;
       pe.hasRigidbody = false;
       pe.hasAudioSource = false;
+      pe.hasAnimator = false;
       pe.hasProbe = false;
       pe.hasPost = false;
       pe.hasFog = false;
@@ -1362,6 +1399,8 @@ bool LoadSceneFromFile(Scene& scene, const std::string& path, LogStore* log) {
       createdEntity->hasRigidbody = pending[i].hasRigidbody;
       createdEntity->audioSource = pending[i].audioSource;
       createdEntity->hasAudioSource = pending[i].hasAudioSource;
+      createdEntity->animator = pending[i].animator;
+      createdEntity->hasAnimator = pending[i].hasAnimator;
       createdEntity->isStatic = pending[i].isStatic;
     }
     created.push_back(id);
