@@ -1,14 +1,13 @@
 cbuffer TaaCB : register(b0)
 {
-    row_major float4x4 PrevVP;
+    row_major float4x4 PrevVPU;
+    row_major float4x4 CurrVPU;
     float4 CamPos;
     float4 CamFwd;
     float4 TaaMisc;
     float4 CamRight;
     float4 CamUp;
     float4 TanWH;
-    row_major float4x4 PrevVPU;
-    row_major float4x4 CurrVPU;
 };
 Texture2D CurrentTX : register(t0);
 Texture2D HistoryTX : register(t1);
@@ -49,26 +48,16 @@ float4 main(PSIn pin) : SV_Target
         float3 sray = CamFwd.xyz + CamRight.xyz * (sndc.x * TanWH.x) + CamUp.xyz * (sndc.y * TanWH.y);
         reprojP = CamPos.xyz + normalize(sray) * 10000.0;
     }
-    float4 ppHist;
-    float4 ppPrevU;
-    if (isSky > 0.5) {
-        ppHist = mul(float4(reprojP, 1.0), PrevVPU);
-        ppPrevU = ppHist;
-    } else {
-        ppHist = mul(float4(reprojP, 1.0), PrevVP);
-        ppPrevU = mul(float4(reprojP, 1.0), PrevVPU);
-    }
+    float4 ppPrevU = mul(float4(reprojP, 1.0), PrevVPU);
     float4 ppCurrU = mul(float4(reprojP, 1.0), CurrVPU);
     float2 histUv = float2(-10.0, -10.0);
     float2 prevUv = float2(-10.0, -10.0);
     float2 currUv = float2(-10.0, -10.0);
     float pdepth = 1e9;
-    if (ppHist.w > 1e-5) {
-        histUv = ppHist.xy / ppHist.w * float2(0.5, -0.5) + 0.5;
-        pdepth = cdepth;
-    }
     if (ppPrevU.w > 1e-5) {
-        prevUv = ppPrevU.xy / ppPrevU.w * float2(0.5, -0.5) + 0.5;
+        histUv = ppPrevU.xy / ppPrevU.w * float2(0.5, -0.5) + 0.5;
+        prevUv = histUv;
+        pdepth = cdepth;
     }
     if (ppCurrU.w > 1e-5) {
         currUv = ppCurrU.xy / ppCurrU.w * float2(0.5, -0.5) + 0.5;

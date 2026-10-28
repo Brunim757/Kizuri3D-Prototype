@@ -825,6 +825,10 @@ public:
   float savedLastProj[16];
   float savedPrevView[16];
   float savedPrevProj[16];
+  float savedLastViewU[16];
+  float savedLastProjU[16];
+  float savedPrevViewU[16];
+  float savedPrevProjU[16];
   float prevView[16];
   float prevProj[16];
   float prevViewU[16];

@@ -632,6 +632,10 @@ DeferredRenderer::DeferredRenderer()
     savedLastProj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
     savedPrevView[i] = (i % 5 == 0) ? 1.0f : 0.0f;
     savedPrevProj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    savedLastViewU[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    savedLastProjU[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    savedPrevViewU[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    savedPrevProjU[i] = (i % 5 == 0) ? 1.0f : 0.0f;
   }
   for (int i = 0; i < 144; ++i) {
     clusterGrid[i] = 0;
@@ -864,7 +868,7 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
     return false;
   }
   RecreateMomentsTargets();
-  float taaInit[72] = { 0.0f };
+  float taaInit[56] = { 0.0f };
   taaCB = rhi->CreateConstantBuffer(sizeof(taaInit), &taaInit);
   if (taaCB == 0) {
     return false;
@@ -2749,6 +2753,10 @@ bool DeferredRenderer::BeginEnvCapture(int size) {
   std::memcpy(savedLastProj, lastProj, sizeof(savedLastProj));
   std::memcpy(savedPrevView, prevView, sizeof(savedPrevView));
   std::memcpy(savedPrevProj, prevProj, sizeof(savedPrevProj));
+  std::memcpy(savedLastViewU, lastViewU, sizeof(savedLastViewU));
+  std::memcpy(savedLastProjU, lastProjU, sizeof(savedLastProjU));
+  std::memcpy(savedPrevViewU, prevViewU, sizeof(savedPrevViewU));
+  std::memcpy(savedPrevProjU, prevProjU, sizeof(savedPrevProjU));
   envCube = rhi->CreateEnvCube(size);
   captureCube = envCube;
   hdrSkyOn = false;
@@ -2760,6 +2768,14 @@ bool DeferredRenderer::BeginProbeCapture(RHITexture cube) {
   }
   captureTarget = 0;
   captureMode = false;
+  std::memcpy(savedLastView, lastView, sizeof(savedLastView));
+  std::memcpy(savedLastProj, lastProj, sizeof(savedLastProj));
+  std::memcpy(savedPrevView, prevView, sizeof(savedPrevView));
+  std::memcpy(savedPrevProj, prevProj, sizeof(savedPrevProj));
+  std::memcpy(savedLastViewU, lastViewU, sizeof(savedLastViewU));
+  std::memcpy(savedLastProjU, lastProjU, sizeof(savedLastProjU));
+  std::memcpy(savedPrevViewU, prevViewU, sizeof(savedPrevViewU));
+  std::memcpy(savedPrevProjU, prevProjU, sizeof(savedPrevProjU));
   captureCube = cube;
   return true;
 }
@@ -2772,6 +2788,10 @@ void DeferredRenderer::GenerateEnvMips() {
   std::memcpy(lastProj, savedLastProj, sizeof(lastProj));
   std::memcpy(prevView, savedPrevView, sizeof(prevView));
   std::memcpy(prevProj, savedPrevProj, sizeof(prevProj));
+  std::memcpy(lastViewU, savedLastViewU, sizeof(lastViewU));
+  std::memcpy(lastProjU, savedLastProjU, sizeof(lastProjU));
+  std::memcpy(prevViewU, savedPrevViewU, sizeof(prevViewU));
+  std::memcpy(prevProjU, savedPrevProjU, sizeof(prevProjU));
 }
 bool DeferredRenderer::UseHdrSky(RHITexture cube) {
   if (rhi == nullptr || cube == 0) {
@@ -6313,62 +6333,43 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       filmSrc = godA;
     }
     if (taaOn && taaA != 0 && taaB != 0 && taaPS != 0) {
-      float taaVP[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
-      for (int cc = 0; cc < 4; ++cc) {
-        for (int rr = 0; rr < 4; ++rr) {
-          float s = 0.0f;
-          for (int kk = 0; kk < 4; ++kk) {
-            s += prevView[cc * 4 + kk] * prevProj[kk * 4 + rr];
-          }
-          taaVP[cc * 4 + rr] = s;
-        }
-      }
-      float taaVPU[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
-      for (int cc = 0; cc < 4; ++cc) {
-        for (int rr = 0; rr < 4; ++rr) {
-          float s = 0.0f;
-          for (int kk = 0; kk < 4; ++kk) {
-            s += prevViewU[cc * 4 + kk] * prevProjU[kk * 4 + rr];
-          }
-          taaVPU[cc * 4 + rr] = s;
-        }
-      }
-      float tc[72];
-      std::memcpy(tc, taaVP, sizeof(taaVP));
-      std::memcpy(tc + 40, taaVPU, sizeof(taaVPU));
+      float taaVPU[16];
+      MulViewProj(prevViewU, prevProjU, taaVPU);
       float taaCurrVPU[16];
       MulViewProj(lastViewU, lastProjU, taaCurrVPU);
-      std::memcpy(tc + 56, taaCurrVPU, sizeof(taaCurrVPU));
-      tc[16] = camPos[0];
-      tc[17] = camPos[1];
-      tc[18] = camPos[2];
-      tc[19] = 1.0f;
-      tc[20] = mainCam.camFwd[0];
-      tc[21] = mainCam.camFwd[1];
-      tc[22] = mainCam.camFwd[2];
-      tc[23] = 0.0f;
-      tc[24] = taaValid ? 1.0f : 0.0f;
-      tc[25] = 0.1f;
-      tc[26] = w > 0 ? 1.0f / static_cast<float>(w) : 0.0f;
-      tc[27] = h > 0 ? 1.0f / static_cast<float>(h) : 0.0f;
-      tc[28] = mainCam.camRight[0];
-      tc[29] = mainCam.camRight[1];
-      tc[30] = mainCam.camRight[2];
-      tc[31] = 0.0f;
-      tc[32] = mainCam.camUp[0];
-      tc[33] = mainCam.camUp[1];
-      tc[34] = mainCam.camUp[2];
-      tc[35] = 0.0f;
+      float tc[56];
+      std::memcpy(tc, taaVPU, sizeof(taaVPU));
+      std::memcpy(tc + 16, taaCurrVPU, sizeof(taaCurrVPU));
+      tc[32] = camPos[0];
+      tc[33] = camPos[1];
+      tc[34] = camPos[2];
+      tc[35] = 1.0f;
+      tc[36] = mainCam.camFwd[0];
+      tc[37] = mainCam.camFwd[1];
+      tc[38] = mainCam.camFwd[2];
+      tc[39] = 0.0f;
+      tc[40] = taaValid ? 1.0f : 0.0f;
+      tc[41] = 0.1f;
+      tc[42] = w > 0 ? 1.0f / static_cast<float>(w) : 0.0f;
+      tc[43] = h > 0 ? 1.0f / static_cast<float>(h) : 0.0f;
+      tc[44] = mainCam.camRight[0];
+      tc[45] = mainCam.camRight[1];
+      tc[46] = mainCam.camRight[2];
+      tc[47] = 0.0f;
+      tc[48] = mainCam.camUp[0];
+      tc[49] = mainCam.camUp[1];
+      tc[50] = mainCam.camUp[2];
+      tc[51] = 0.0f;
       float tanH = 1.0f;
       float tanW = 1.0f;
       if (mainCam.fovY > 0.01f && mainCam.fovY < 3.1f && mainCam.aspect > 0.01f) {
         tanH = std::tan(mainCam.fovY * 0.5f);
         tanW = tanH * mainCam.aspect;
       }
-      tc[36] = tanW;
-      tc[37] = tanH;
-      tc[38] = 0.0f;
-      tc[39] = 0.0f;
+      tc[52] = tanW;
+      tc[53] = tanH;
+      tc[54] = 0.0f;
+      tc[55] = 0.0f;
       rhi->UpdateConstantBuffer(taaCB, &tc, sizeof(tc));
       rhi->SetPixelConstantBuffer(0, taaCB);
       rhi->SetPixelSampler(0, sampler);

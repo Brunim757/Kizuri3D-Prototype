@@ -7897,21 +7897,34 @@ bool TestTaaReprojection() {
   if (!LoadShaderText("TaaPS.hlsl", src)) {
     return false;
   }
-  const char* required[7] = {
+  const char* required[8] = {
+    "row_major float4x4 PrevVPU;",
     "row_major float4x4 CurrVPU;",
-    "PositionTX.Sample(PointSampler, pin.uv)",
-    "mul(float4(reprojP, 1.0), PrevVP)",
-    "mul(float4(reprojP, 1.0), PrevVPU)",
-    "mul(float4(reprojP, 1.0), CurrVPU)",
+    "float4 CamPos;",
+    "float4 ppPrevU = mul(float4(reprojP, 1.0), PrevVPU);",
+    "float4 ppCurrU = mul(float4(reprojP, 1.0), CurrVPU);",
+    "histUv = ppPrevU.xy / ppPrevU.w",
     "motionPx = (prevUv - currUv)",
     "HistoryTX.Sample(LinearSampler, histUv)"
   };
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < 8; ++i) {
     if (src.find(required[i]) == std::string::npos) {
       return false;
     }
   }
-  return true;
+  const char* forbidden[2] = {
+    "float4x4 PrevVP;",
+    "mul(float4(reprojP, 1.0), PrevVP)"
+  };
+  for (int i = 0; i < 2; ++i) {
+    if (src.find(forbidden[i]) != std::string::npos) {
+      return false;
+    }
+  }
+  const size_t prevPos = src.find("row_major float4x4 PrevVPU;");
+  const size_t currPos = src.find("row_major float4x4 CurrVPU;");
+  const size_t camPos = src.find("float4 CamPos;");
+  return prevPos < currPos && currPos < camPos;
 }
 bool TestTaaHistory() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
