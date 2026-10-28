@@ -1,4 +1,5 @@
 #pragma once
+#include "Kizuri/Animator.h"
 #include "Kizuri/Audio.h"
 #include "Kizuri/Assets/AssetDatabase.h"
 #include "Kizuri/Camera.h"
@@ -55,6 +56,7 @@ private:
   EcsWorld ecs;
   EcsSystemScheduler ecsSystems;
   DeferredRenderer renderer;
+  AnimatorRuntime animators;
   AssetDatabase assets;
   JobSystem jobs;
   PhysicsWorld physics;

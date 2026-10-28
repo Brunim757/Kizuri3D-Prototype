@@ -837,6 +837,7 @@ void EditorApp::ClearPlayRuntime() {
     }
   }
   audioSources.clear();
+  animators.Reset();
 }
 void EditorApp::StartPlay() {
   if (playActive) {
@@ -1560,6 +1561,7 @@ void EditorApp::DrawRestorePrompt() {
       if (LoadSceneFromFile(scene, rec, &log)) {
         currentPath = pendingRestoreMain;
         scene.MarkDirty();
+        animators.Reset();
         selection.Clear();
         edits.Clear();
         undo.Clear();
@@ -1588,6 +1590,7 @@ void EditorApp::DoNewScene() {
     return;
   }
   scene.Clear();
+  animators.Reset();
   selection.Clear();
   edits.Clear();
   undo.Clear();
@@ -1619,6 +1622,7 @@ void EditorApp::DoOpenPath(const std::string& path) {
   }
   if (LoadSceneFromFile(scene, path, &log)) {
     currentPath = path;
+    animators.Reset();
     selection.Clear();
     edits.Clear();
     undo.Clear();

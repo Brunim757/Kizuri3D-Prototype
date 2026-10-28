@@ -41,6 +41,7 @@
 #include "Kizuri/Ecs.h"
 #include "Kizuri/GameLoop.h"
 #include "Kizuri/GameWorld.h"
+#include "Kizuri/Animator.h"
 #include "Kizuri/GameMaterial.h"
 #include "Kizuri/Assets/LightmapBaker.h"
 #include "Kizuri/Assets/MeshImporter.h"
@@ -2562,6 +2563,401 @@ bool TestAudioSourceSerialize() {
     }
   }
   return false;
+}
+static bool AnimatorTestNear(float a, float b) {
+  return std::fabs(a - b) <= 1e-4f;
+}
+static Kizuri::MeshAssetData MakeAnimatorTestMesh() {
+  Kizuri::MeshAssetData data;
+  data.guid = "anim_runtime_mesh";
+  data.positions = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f };
+  data.normals = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  data.uvs = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  data.tangents = { 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  data.indices = { 0u, 1u, 2u };
+  Kizuri::MeshPartData part;
+  part.indexOffset = 0;
+  part.indexCount = 3;
+  part.material = 0;
+  data.parts.push_back(part);
+  data.aabbMin[0] = -1.0f;
+  data.aabbMin[1] = -1.0f;
+  data.aabbMin[2] = -1.0f;
+  data.aabbMax[0] = 1.0f;
+  data.aabbMax[1] = 1.0f;
+  data.aabbMax[2] = 1.0f;
+  data.hasSource = false;
+  data.sourceHash = 0;
+  data.sourceTimestamp = 0;
+  data.partSkins.push_back(0);
+  const float weights[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+  for (int v = 0; v < 3; ++v) {
+    data.skinJoints.insert(data.skinJoints.end(), 4, 0u);
+    data.skinWeights.insert(data.skinWeights.end(), weights, weights + 4);
+  }
+  Kizuri::MeshSkinData skin;
+  Kizuri::MeshSkinJointData root;
+  root.name = "root";
+  root.parent = -1;
+  skin.joints.push_back(root);
+  Kizuri::MeshSkinJointData child;
+  child.name = "child";
+  child.parent = 0;
+  child.bindTranslation[0] = 1.0f;
+  child.inverseBind[12] = -1.0f;
+  skin.joints.push_back(child);
+  data.skins.push_back(skin);
+  Kizuri::MeshAnimClipData walk;
+  walk.name = "Walk";
+  walk.duration = 1.0f;
+  Kizuri::MeshAnimChannelData walkChannel;
+  walkChannel.skin = 0;
+  walkChannel.joint = 0;
+  walkChannel.path = 0;
+  walkChannel.interpolation = 0;
+  Kizuri::MeshAnimKeyData key;
+  key.time = 0.0f;
+  key.value[0] = 0.0f;
+  walkChannel.keys.push_back(key);
+  key.time = 1.0f;
+  key.value[0] = 2.0f;
+  walkChannel.keys.push_back(key);
+  walk.channels.push_back(walkChannel);
+  data.animations.push_back(walk);
+  Kizuri::MeshAnimClipData idle;
+  idle.name = "Idle";
+  idle.duration = 2.0f;
+  Kizuri::MeshAnimChannelData idleChannel = walkChannel;
+  idleChannel.keys[0].time = 0.0f;
+  idleChannel.keys[0].value[0] = 3.0f;
+  idleChannel.keys[1].time = 2.0f;
+  idleChannel.keys[1].value[0] = 3.0f;
+  idle.channels.push_back(idleChannel);
+  data.animations.push_back(idle);
+  return data;
+}
+static Kizuri::MeshAssetData MakeAnimatorTwoSkinMesh() {
+  Kizuri::MeshAssetData data = MakeAnimatorTestMesh();
+  data.guid = "anim_upload_mesh";
+  const float positions[9] = { 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f };
+  data.positions.insert(data.positions.end(), positions, positions + 9);
+  const float normals[9] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  data.normals.insert(data.normals.end(), normals, normals + 9);
+  const float uvs[6] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  data.uvs.insert(data.uvs.end(), uvs, uvs + 6);
+  const float tangents[12] = { 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  data.tangents.insert(data.tangents.end(), tangents, tangents + 12);
+  const float weights[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+  for (int v = 0; v < 3; ++v) {
+    data.skinJoints.insert(data.skinJoints.end(), 4, 0u);
+    data.skinWeights.insert(data.skinWeights.end(), weights, weights + 4);
+  }
+  data.indices.push_back(3);
+  data.indices.push_back(4);
+  data.indices.push_back(5);
+  Kizuri::MeshPartData part;
+  part.indexOffset = 3;
+  part.indexCount = 3;
+  part.material = 0;
+  data.parts.push_back(part);
+  data.partSkins.push_back(1);
+  Kizuri::MeshSkinData skin;
+  Kizuri::MeshSkinJointData root;
+  root.name = "second_root";
+  root.parent = -1;
+  root.bindTranslation[1] = 1.0f;
+  root.inverseBind[13] = -1.0f;
+  skin.joints.push_back(root);
+  data.skins.push_back(skin);
+  return data;
+}
+bool TestAnimatorRuntime() {
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  Kizuri::AssetDatabase assets;
+  Kizuri::MeshAssetData mesh = MakeAnimatorTestMesh();
+  assets.UpsertBatchMesh("anim_runtime_mesh", mesh);
+  Kizuri::Scene scene;
+  const Kizuri::EntityId id = scene.CreateEntity("anim_skinned");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (entity == nullptr) {
+    renderer.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  entity->hasMesh = true;
+  entity->meshGuid = "anim_runtime_mesh";
+  Kizuri::AnimatorRuntime runtime;
+  float view[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+  float proj[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1.1111112f, 1, 0, 0, -1.1111112f, 0 };
+  float cam[3] = { 0.0f, 0.0f, 5.0f };
+  bool ok = Kizuri::AnimatorRuntime::MeshIsSkinned(mesh);
+  ok = ok && Kizuri::AnimatorRuntime::RecordIsSkinned(assets, "anim_runtime_mesh");
+  ok = ok && !Kizuri::AnimatorRuntime::RecordIsSkinned(assets, "missing_anim_mesh");
+  renderer.BeginObjects(view, proj);
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  Kizuri::AnimatorRuntime::BoneRange range = runtime.GetBoneRange(id, 0);
+  ok = ok && range.count == 2 && range.offset == 0;
+  const std::vector<float>* bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && bones->size() == 32;
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 0.0f) && AnimatorTestNear((*bones)[28], 0.0f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  ok = ok && runtime.GetBoneRange(id, 0).offset == range.offset;
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  ok = ok && runtime.GetBoneRange(id, 0).offset == range.offset + 2;
+  entity->hasAnimator = true;
+  Kizuri::MakeDefaultAnimator(entity->animator);
+  entity->animator.clipName = "Walk";
+  runtime.BeginFrame();
+  runtime.Update(scene, assets, 0.5f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 1.0f) && AnimatorTestNear((*bones)[28], 1.0f);
+  runtime.BeginFrame();
+  runtime.Update(scene, assets, 0.7f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 0.4f);
+  entity->animator.loop = false;
+  runtime.BeginFrame();
+  runtime.Update(scene, assets, 10.0f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 2.0f);
+  entity->animator.loop = true;
+  entity->animator.speed = 2.0f;
+  runtime.SetSimulating(false);
+  runtime.SetSimulating(true);
+  runtime.BeginFrame();
+  runtime.Update(scene, assets, 0.3f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 1.2f);
+  entity->animator.playing = false;
+  runtime.BeginFrame();
+  runtime.Update(scene, assets, 5.0f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 1.2f);
+  entity->animator.playing = true;
+  entity->animator.speed = 1.0f;
+  entity->animator.clipName = "Idle";
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 3.0f);
+  entity->animator.clipName.clear();
+  mesh.skins[0].joints[0].inverseBind[12] = -10.0f;
+  assets.UpsertBatchMesh("anim_runtime_mesh", mesh);
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && bones->size() == 32 && AnimatorTestNear((*bones)[12], -10.0f);
+  Kizuri::MeshAssetData bad = mesh;
+  bad.skinJoints[0] = 7;
+  assets.UpsertBatchMesh("anim_bad_mesh", bad);
+  const Kizuri::EntityId badId = scene.CreateEntity("anim_bad");
+  Kizuri::Entity* badEntity = scene.Get(badId);
+  ok = ok && badEntity != nullptr;
+  if (badEntity != nullptr) {
+    badEntity->hasMesh = true;
+    badEntity->meshGuid = "anim_bad_mesh";
+    runtime.BeginFrame();
+    ok = ok && !runtime.AddEntityBones(*badEntity, assets, renderer);
+    ok = ok && runtime.GetBoneRange(badId, 0).count == 0;
+    ok = ok && runtime.BoneMatrices(badId, 0) == nullptr;
+  }
+  Kizuri::MeshAssetData mixed = MakeAnimatorTestMesh();
+  mixed.guid = "anim_mixed_mesh";
+  const float mixedPositions[9] = { 0.0f, 0.0f, 2.0f, 1.0f, 0.0f, 2.0f, 0.0f, 1.0f, 2.0f };
+  mixed.positions.insert(mixed.positions.end(), mixedPositions, mixedPositions + 9);
+  const float mixedNormals[9] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  mixed.normals.insert(mixed.normals.end(), mixedNormals, mixedNormals + 9);
+  const float mixedUvs[6] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  mixed.uvs.insert(mixed.uvs.end(), mixedUvs, mixedUvs + 6);
+  const float mixedTangents[12] = { 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+  mixed.tangents.insert(mixed.tangents.end(), mixedTangents, mixedTangents + 12);
+  const float mixedWeights[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+  for (int v = 0; v < 3; ++v) {
+    mixed.skinJoints.insert(mixed.skinJoints.end(), 4, 0u);
+    mixed.skinWeights.insert(mixed.skinWeights.end(), mixedWeights, mixedWeights + 4);
+  }
+  mixed.indices.push_back(3);
+  mixed.indices.push_back(4);
+  mixed.indices.push_back(5);
+  Kizuri::MeshPartData mixedPart;
+  mixedPart.indexOffset = 3;
+  mixedPart.indexCount = 3;
+  mixedPart.material = 0;
+  mixed.parts.push_back(mixedPart);
+  mixed.partSkins.push_back(0xFFFFFFFFu);
+  assets.UpsertBatchMesh("anim_mixed_mesh", mixed);
+  const Kizuri::EntityId mixedId = scene.CreateEntity("anim_mixed");
+  Kizuri::Entity* mixedEntity = scene.Get(mixedId);
+  ok = ok && mixedEntity != nullptr;
+  if (mixedEntity != nullptr) {
+    mixedEntity->hasMesh = true;
+    mixedEntity->meshGuid = "anim_mixed_mesh";
+    runtime.BeginFrame();
+    ok = ok && runtime.AddEntityBones(*mixedEntity, assets, renderer);
+    ok = ok && runtime.GetBoneRange(mixedId, 0).count == 2;
+  }
+  entity->animator.clipName = "Walk";
+  runtime.SetSimulating(false);
+  runtime.BeginFrame();
+  runtime.Update(scene, assets, 5.0f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], -10.0f);
+  runtime.SetSimulating(true);
+  runtime.BeginFrame();
+  runtime.Update(scene, assets, 0.5f);
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  bones = runtime.BoneMatrices(id, 0);
+  ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], -9.0f);
+  renderer.EndObjectsToTexture(cam);
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
+bool TestAnimatorUpload() {
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  Kizuri::AssetDatabase assets;
+  Kizuri::MeshAssetData mesh = MakeAnimatorTwoSkinMesh();
+  assets.UpsertBatchMesh("anim_upload_mesh", mesh);
+  float verts[6 * 22] = { 0.0f };
+  for (int v = 0; v < 6; ++v) {
+    const int corner = v % 3;
+    verts[v * 22 + 0] = corner == 1 ? 1.0f : 0.0f;
+    verts[v * 22 + 1] = corner == 2 ? 1.0f : 0.0f;
+    verts[v * 22 + 2] = v < 3 ? 0.0f : 1.0f;
+    verts[v * 22 + 5] = 1.0f;
+    verts[v * 22 + 8] = 1.0f;
+    verts[v * 22 + 11] = 1.0f;
+    verts[v * 22 + 18] = 1.0f;
+  }
+  uint32_t idxs[6] = { 0, 1, 2, 3, 4, 5 };
+  Kizuri::RHIBuffer svb = rhi->CreateBuffer(sizeof(verts), 88, false, verts);
+  Kizuri::RHIBuffer sib = rhi->CreateBuffer(sizeof(idxs), 4, true, idxs);
+  if (svb == 0 || sib == 0) {
+    renderer.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  Kizuri::RenderDirectionalLight dl;
+  dl.dir[0] = 0.0f;
+  dl.dir[1] = -1.0f;
+  dl.dir[2] = 0.0f;
+  dl.color[0] = 1.0f;
+  dl.color[1] = 1.0f;
+  dl.color[2] = 1.0f;
+  dl.intensity = 2.0f;
+  dl.castShadow = true;
+  dl.effectiveSize = 0.5f;
+  dl.shadowSize = 1024;
+  dl.cascades = 2;
+  dl.lambda = 0.5f;
+  renderer.AddDirectionalLight(dl);
+  Kizuri::Scene scene;
+  const Kizuri::EntityId id = scene.CreateEntity("anim_upload");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (entity == nullptr) {
+    renderer.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  entity->hasMesh = true;
+  entity->meshGuid = "anim_upload_mesh";
+  Kizuri::AnimatorRuntime runtime;
+  float view[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+  float proj[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1.1111112f, 1, 0, 0, -1.1111112f, 0 };
+  float cam[3] = { 0.0f, 0.0f, 5.0f };
+  float world[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+  float bmin[3] = { -2.0f, -2.0f, -2.0f };
+  float bmax[3] = { 2.0f, 2.0f, 2.0f };
+  Kizuri::DeferredMaterial mat;
+  bool ok = true;
+  renderer.BeginObjects(view, proj);
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  Kizuri::AnimatorRuntime::BoneRange range0 = runtime.GetBoneRange(id, 0);
+  Kizuri::AnimatorRuntime::BoneRange range1 = runtime.GetBoneRange(id, 1);
+  ok = ok && range0.offset == 0 && range0.count == 2;
+  ok = ok && range1.offset == 2 && range1.count == 1;
+  const std::vector<float>* bones0 = runtime.BoneMatrices(id, 0);
+  const std::vector<float>* bones1 = runtime.BoneMatrices(id, 1);
+  ok = ok && bones0 != nullptr && bones0->size() == 32 && bones1 != nullptr && bones1->size() == 16;
+  ok = ok && bones0 != nullptr && bones1 != nullptr && AnimatorTestNear((*bones0)[12], 0.0f) && AnimatorTestNear((*bones0)[28], 0.0f) && AnimatorTestNear((*bones1)[13], 0.0f);
+  renderer.DrawObjectEx(world, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, range0.offset, range0.count);
+  renderer.DrawObjectEx(world, svb, sib, 3, 3, &mat, 0.0f, bmin, bmax, range1.offset, range1.count);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().geometryDraws == 2 && renderer.GetStats().shadowDraws >= 2;
+  renderer.BeginObjects(view, proj);
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  range0 = runtime.GetBoneRange(id, 0);
+  range1 = runtime.GetBoneRange(id, 1);
+  ok = ok && range0.offset == 0 && range1.offset == 2;
+  renderer.DrawObjectEx(world, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, range0.offset, range0.count);
+  renderer.DrawObjectEx(world, svb, sib, 3, 3, &mat, 0.0f, bmin, bmax, range1.offset, range1.count);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().shadowCached;
+  entity->hasAnimator = true;
+  Kizuri::MakeDefaultAnimator(entity->animator);
+  entity->animator.clipName = "Walk";
+  renderer.BeginObjects(view, proj);
+  runtime.Update(scene, assets, 0.5f);
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  range0 = runtime.GetBoneRange(id, 0);
+  range1 = runtime.GetBoneRange(id, 1);
+  bones0 = runtime.BoneMatrices(id, 0);
+  bones1 = runtime.BoneMatrices(id, 1);
+  ok = ok && bones0 != nullptr && bones1 != nullptr && AnimatorTestNear((*bones0)[12], 1.0f) && AnimatorTestNear((*bones0)[28], 1.0f) && AnimatorTestNear((*bones1)[13], 0.0f);
+  renderer.DrawObjectEx(world, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, range0.offset, range0.count);
+  renderer.DrawObjectEx(world, svb, sib, 3, 3, &mat, 0.0f, bmin, bmax, range1.offset, range1.count);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && !renderer.GetStats().shadowCached;
+  entity->animator.playing = false;
+  renderer.BeginObjects(view, proj);
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  range0 = runtime.GetBoneRange(id, 0);
+  range1 = runtime.GetBoneRange(id, 1);
+  renderer.DrawObjectEx(world, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, range0.offset, range0.count);
+  renderer.DrawObjectEx(world, svb, sib, 3, 3, &mat, 0.0f, bmin, bmax, range1.offset, range1.count);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().shadowCached;
+  entity->animator.playing = true;
+  renderer.BeginObjects(view, proj);
+  runtime.Update(scene, assets, 0.25f);
+  runtime.BeginFrame();
+  ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
+  range0 = runtime.GetBoneRange(id, 0);
+  range1 = runtime.GetBoneRange(id, 1);
+  bones0 = runtime.BoneMatrices(id, 0);
+  ok = ok && bones0 != nullptr && AnimatorTestNear((*bones0)[12], 1.5f);
+  renderer.DrawObjectEx(world, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, range0.offset, range0.count);
+  renderer.DrawObjectEx(world, svb, sib, 3, 3, &mat, 0.0f, bmin, bmax, range1.offset, range1.count);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && !renderer.GetStats().shadowCached;
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
 }
 bool TestAnimatorSerialize() {
   Kizuri::AnimatorData defaults;
@@ -13055,6 +13451,8 @@ int main() {
   failures += Check("GameWorldAudio", TestGameWorldAudio());
   failures += Check("AudioSourceSerialize", TestAudioSourceSerialize());
   failures += Check("AnimatorSerialize", TestAnimatorSerialize());
+  failures += Check("AnimatorRuntime", TestAnimatorRuntime());
+  failures += Check("AnimatorUpload", TestAnimatorUpload());
   failures += Check("ComponentRegistry", TestComponentRegistry());
   failures += Check("SceneAllComponents", TestSceneAllComponentsRoundTrip());
   failures += Check("ComponentUndo", TestComponentUndo());

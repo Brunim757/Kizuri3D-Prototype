@@ -3912,6 +3912,8 @@ void DeferredRenderer::BeginEnvFace(int face, const float view[16], const float 
     return;
   }
   captureMode = true;
+  bonePool.clear();
+  boneContentHash = 0;
   std::memcpy(lastView, view, sizeof(lastView));
   std::memcpy(lastProj, proj, sizeof(lastProj));
   float vp[16];

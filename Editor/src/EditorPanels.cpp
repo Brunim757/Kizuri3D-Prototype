@@ -322,16 +322,18 @@ static void StaticHex16(uint64_t v, char out[17]) {
   }
   out[16] = 0;
 }
-void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uint32_t partOff, uint32_t partCount, const DeferredMaterial* mat, float fade, const float* aabbMin, const float* aabbMax, const float* camPos) {
-  if (!viewMeshletCull || rec == nullptr || rec->meshlets.size() < 2 || partCount == 0) {
+void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uint32_t partOff, uint32_t partCount, const DeferredMaterial* mat, float fade, const float* aabbMin, const float* aabbMax, const float* camPos, uint32_t boneOffset, uint32_t boneCount) {
+  const bool skinned = boneCount > 0 && boneOffset != 0xFFFFFFFFu;
+  const RHIBuffer meshVB = rec == nullptr ? 0 : (skinned ? rec->gpuVBSkinned : rec->gpuVB);
+  if (skinned || !viewMeshletCull || rec == nullptr || rec->meshlets.size() < 2 || partCount == 0) {
     if (rec != nullptr) {
-      renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax);
+      renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
     }
     return;
   }
   float planes[6][4];
   if (!renderer.GetFrustumPlanes(planes)) {
-    renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax);
+    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
     return;
   }
   uint32_t partEnd = partOff + partCount;
@@ -351,7 +353,7 @@ void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uin
     }
   }
   if (visCount == totalCount) {
-    renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax);
+    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
     return;
   }
   for (size_t r = 0; r < rec->meshlets.size(); ++r) {
@@ -365,7 +367,7 @@ void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uin
     if (!MeshletRangeVisible(world, range, planes, camPos)) {
       continue;
     }
-    renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, s, e - s, mat, fade, aabbMin, aabbMax);
+    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, s, e - s, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
   }
 }
 std::unordered_set<EntityId, EntityIdHash> EditorApp::SubmitStaticBatches(const float cpos[3]) {
@@ -1297,8 +1299,10 @@ void EditorApp::DrawAudioMixer() {
   ImGui::End();
 }
 void EditorApp::RunSimulation(float dt) {
+  animators.SetSimulating(viewSimulate || playActive);
   if (!viewSimulate && !playActive) {
     SyncAudio(dt);
+    animators.Update(scene, assets, 0.0f);
     return;
   }
   if (!playActive) {
@@ -1306,6 +1310,7 @@ void EditorApp::RunSimulation(float dt) {
   }
   simSystems.Run(simEcs, physJobs, dt);
   SceneEcsBridge::ExportTransforms(simEcs, scene);
+  animators.Update(scene, assets, dt);
 }
 void EditorApp::SyncPhysics(float dt) {
   if (!viewSimulate && !playActive) {
@@ -1444,6 +1449,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
   if (!playActive) {
     RunSimulation(frameDt);
   }
+  animators.BeginFrame();
   renderer.ClearLights();
   renderer.SetFallbackLight(!soloLightId.IsValid());
   renderer.ClearFogVolumes();
@@ -1571,8 +1577,9 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
     int drawCount = 1;
     drawGuids[0] = e->meshGuid;
     drawGuids[1] = "";
-    if (e->hasLod && e->lod.farGuid.empty() && e->lod.farDist > e->lod.nearDist) {
-      const MeshRecord* baseRec = assets.GetByGuid(e->meshGuid);
+    const MeshRecord* baseRec = assets.GetByGuid(e->meshGuid);
+    const bool skinnedBase = baseRec != nullptr && AnimatorRuntime::MeshIsSkinned(baseRec->data);
+    if (!skinnedBase && e->hasLod && e->lod.farGuid.empty() && e->lod.farDist > e->lod.nearDist) {
       if (baseRec != nullptr) {
         float ldx = e->transform.position[0] - cpos[0];
         float ldy = e->transform.position[1] - cpos[1];
@@ -1625,7 +1632,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
           drawCount = 2;
         }
       }
-    } else if (e->hasLod && !e->lod.farGuid.empty() && e->lod.farGuid != e->meshGuid && e->lod.farDist > e->lod.nearDist) {
+    } else if (!skinnedBase && e->hasLod && !e->lod.farGuid.empty() && e->lod.farGuid != e->meshGuid && e->lod.farDist > e->lod.nearDist) {
       float ldx = e->transform.position[0] - cpos[0];
       float ldy = e->transform.position[1] - cpos[1];
       float ldz = e->transform.position[2] - cpos[2];
@@ -1647,28 +1654,42 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
       if (rec != nullptr && !rec->gpuReady) {
         waitingForMesh = true;
       }
-      if (rec != nullptr && rec->loaded && assets.EnsureMeshGpu(drawGuids[li], 4194304)) {
-        rec = assets.GetByGuid(drawGuids[li]);
-          if (rec != nullptr && rec->gpuReady) {
-            if (rec->data.parts.empty()) {
-              DrawMeshRanges(world, rec, 0, rec->gpuCount, nullptr, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos);
-          } else {
-          for (size_t p = 0; p < rec->data.parts.size(); ++p) {
-            const MeshPartData& part = rec->data.parts[p];
-            DeferredMaterial partMat;
-            const DeferredMaterial* useMat = FillDeferredForPart(assets, *e, rec->data, p, partMat) ? &partMat : nullptr;
-            if (useMat != nullptr && !useMat->vtGuid.empty()) {
-              float vdx = world[12] - cpos[0];
-              float vdy = world[13] - cpos[1];
-              float vdz = world[14] - cpos[2];
-              assets.UpdateVirtualTexture(useMat->vtGuid, sqrtf(vdx * vdx + vdy * vdy + vdz * vdz));
-            }
-            DrawMeshRanges(world, rec, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos);
+      if (rec == nullptr || !rec->loaded || !assets.EnsureMeshGpu(drawGuids[li], 4194304)) {
+        continue;
+      }
+      rec = assets.GetByGuid(drawGuids[li]);
+      if (rec == nullptr || !rec->gpuReady) {
+        continue;
+      }
+      if (!rec->data.skins.empty()) {
+        animators.AddEntityBones(*e, assets, renderer);
+      }
+      if (rec->data.parts.empty()) {
+        DrawMeshRanges(world, rec, 0, rec->gpuCount, nullptr, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos);
+        anyDrawn = true;
+        continue;
+      }
+      for (size_t p = 0; p < rec->data.parts.size(); ++p) {
+        const MeshPartData& part = rec->data.parts[p];
+        uint32_t skin = p < rec->data.partSkins.size() ? rec->data.partSkins[p] : 0xFFFFFFFFu;
+        AnimatorRuntime::BoneRange bones;
+        if (skin != 0xFFFFFFFFu) {
+          bones = animators.GetBoneRange(e->id, skin);
+          if (bones.count == 0) {
+            continue;
           }
         }
-        anyDrawn = true;
+        DeferredMaterial partMat;
+        const DeferredMaterial* useMat = FillDeferredForPart(assets, *e, rec->data, p, partMat) ? &partMat : nullptr;
+        if (useMat != nullptr && !useMat->vtGuid.empty()) {
+          float vdx = world[12] - cpos[0];
+          float vdy = world[13] - cpos[1];
+          float vdz = world[14] - cpos[2];
+          assets.UpdateVirtualTexture(useMat->vtGuid, sqrtf(vdx * vdx + vdy * vdy + vdz * vdz));
+        }
+        DrawMeshRanges(world, rec, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos, bones.offset, bones.count);
       }
-    }
+      anyDrawn = true;
     }
     if (!anyDrawn && !waitingForMesh && defaultVB != 0) {
       const MeshRecord* baserec = assets.GetByGuid(e->meshGuid);

@@ -57,6 +57,10 @@ struct JointPose {
 struct Pose {
   std::vector<JointPose> joints;
 };
+struct ModelScratch {
+  std::vector<unsigned char> state;
+  std::vector<int> chain;
+};
 void IdentityMatrix(float out[16]);
 bool InvertMatrix(const float in[16], float out[16]);
 void MultiplyMatrix(const float a[16], const float b[16], float out[16]);
@@ -66,8 +70,10 @@ void NormalizeQuat(float q[4]);
 void SlerpQuat(const float a[4], const float b[4], float t, float out[4]);
 bool ResetPose(const Skeleton& skeleton, Pose& out);
 bool SampleClip(const Skeleton& skeleton, const Clip& clip, float time, Pose& out);
+bool SampleClipUnchecked(const Skeleton& skeleton, const Clip& clip, float time, Pose& out);
 bool BlendPoses(const Pose& a, const Pose& b, float t, Pose& out);
 bool ComputeModelMatrices(const Skeleton& skeleton, const Pose& pose, std::vector<float>& out);
+bool ComputeModelMatrices(const Skeleton& skeleton, const Pose& pose, std::vector<float>& out, ModelScratch& scratch);
 bool SkinPosition(const Skeleton& skeleton, const std::vector<float>& modelMatrices, const SkinVertex& skin, const float bindPosition[3], float out[3]);
 }
 }

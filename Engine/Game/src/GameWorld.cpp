@@ -88,7 +88,7 @@ static void SelectLodGuids(AssetDatabase& assets, const DeferredRenderer& render
     return;
   }
   const MeshRecord* base = assets.GetByGuid(entity.meshGuid);
-  if (base == nullptr) {
+  if (base == nullptr || AnimatorRuntime::MeshIsSkinned(base->data)) {
     return;
   }
   const float dx = entity.transform.position[0] - camPos[0];
@@ -462,6 +462,7 @@ void GameWorld::Shutdown() {
   lastCookieKey.clear();
   postVolumeActive = false;
   lastDelta = 0.0f;
+  animators.Reset();
   assetsRoot.clear();
   audio.Shutdown();
   physics.Shutdown();
@@ -489,6 +490,7 @@ bool GameWorld::LoadSceneFile(const std::string& path) {
   lastDecalGuids.clear();
   lastDecalRects.clear();
   lastCookieKey.clear();
+  animators.Reset();
   SceneEcsBridge::Import(scene, ecs);
   return true;
 }
@@ -526,6 +528,8 @@ void GameWorld::Update(float dt) {
     return;
   }
   lastDelta = dt < 0.0f ? 0.0f : dt;
+  animators.SetSimulating(true);
+  animators.Update(scene, assets, lastDelta);
   ecsSystems.Run(ecs, jobs, dt);
 }
 void GameWorld::SyncPhysics(float dt) {
@@ -786,6 +790,7 @@ void GameWorld::Render(float alpha) {
   SubmitSceneFog(renderer, scene, ids);
   SubmitScenePost(ids, camPos);
   renderer.BeginObjects(view, proj);
+  animators.BeginFrame();
   SubmitSceneCookies(ids);
   SubmitSceneLights(renderer, scene, EntityId::Invalid(), ids);
   float world[16];
@@ -818,6 +823,9 @@ void GameWorld::Render(float alpha) {
         renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax);
         continue;
       }
+      if (!rec->data.skins.empty()) {
+        animators.AddEntityBones(*e, assets, renderer);
+      }
       for (size_t p = 0; p < rec->data.parts.size(); ++p) {
         const MeshPartData& part = rec->data.parts[p];
         if (part.indexCount == 0 || static_cast<size_t>(part.indexOffset) + static_cast<size_t>(part.indexCount) > rec->data.indices.size()) {
@@ -826,7 +834,20 @@ void GameWorld::Render(float alpha) {
         DeferredMaterial partMat;
         const DeferredMaterial* useMat = FillDeferredForPart(assets, *e, rec->data, p, partMat) ? &partMat : nullptr;
         UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
-        renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax);
+        uint32_t skin = 0xFFFFFFFFu;
+        if (p < rec->data.partSkins.size()) {
+          skin = rec->data.partSkins[p];
+        }
+        AnimatorRuntime::BoneRange bones;
+        RHIBuffer drawVB = rec->gpuVB;
+        if (skin != 0xFFFFFFFFu) {
+          bones = animators.GetBoneRange(e->id, skin);
+          if (bones.count == 0) {
+            continue;
+          }
+          drawVB = rec->gpuVBSkinned;
+        }
+        renderer.DrawObjectEx(world, drawVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, bones.offset, bones.count);
       }
     }
   }

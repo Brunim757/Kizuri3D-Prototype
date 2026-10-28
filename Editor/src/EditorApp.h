@@ -1,6 +1,7 @@
 #pragma once
 #include "Kizuri/Scene.h"
 #include "Kizuri/GameLoop.h"
+#include "Kizuri/Animator.h"
 #include "Kizuri/MultiSelection.h"
 #include "Kizuri/Log.h"
 #include "Kizuri/EditQueue.h"
@@ -27,6 +28,7 @@ struct EditorApp {
   Window window;
   IRHI* rhi;
   DeferredRenderer renderer;
+  AnimatorRuntime animators;
   Scene scene;
   Scene playScene;
   GameLoop playLoop;
@@ -320,7 +322,7 @@ struct EditorApp {
   void DrawMeshSection(Entity* e);
   void SubmitSceneDraws(const float cpos[3]);
   std::unordered_set<EntityId, EntityIdHash> SubmitStaticBatches(const float cpos[3]);
-  void DrawMeshRanges(const float world[16], const MeshRecord* rec, uint32_t partOff, uint32_t partCount, const DeferredMaterial* mat, float fade, const float* aabbMin, const float* aabbMax, const float* camPos);
+  void DrawMeshRanges(const float world[16], const MeshRecord* rec, uint32_t partOff, uint32_t partCount, const DeferredMaterial* mat, float fade, const float* aabbMin, const float* aabbMax, const float* camPos, uint32_t boneOffset = 0xFFFFFFFFu, uint32_t boneCount = 0);
   void BakeEnvironment();
   void BakeLightmap(EntityId id);
   void BakeFaces(float px, float py, float pz);

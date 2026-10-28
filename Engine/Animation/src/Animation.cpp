@@ -319,15 +319,16 @@ bool ResetPose(const Skeleton& skeleton, Pose& out) {
   }
   return true;
 }
-bool SampleClip(const Skeleton& skeleton, const Clip& clip, float time, Pose& out) {
-  if (!skeleton.IsValid() || !clip.IsValid(skeleton) || !Finite(time)) {
+static bool SampleValidatedClip(const Skeleton& skeleton, const Clip& clip, float time, Pose& out) {
+  if (!Finite(time) || !ResetPose(skeleton, out)) {
     return false;
   }
-  if (!ResetPose(skeleton, out)) {
-    return false;
-  }
+  const int jointCount = static_cast<int>(skeleton.joints.size());
   for (size_t c = 0; c < clip.channels.size(); ++c) {
     const Channel& channel = clip.channels[c];
+    if (channel.joint < 0 || channel.joint >= jointCount || channel.keys.empty()) {
+      return false;
+    }
     const std::vector<Key>& keys = channel.keys;
     const Key* previous = &keys[0];
     const Key* next = &keys[0];
@@ -396,6 +397,18 @@ bool SampleClip(const Skeleton& skeleton, const Clip& clip, float time, Pose& ou
   }
   return true;
 }
+bool SampleClip(const Skeleton& skeleton, const Clip& clip, float time, Pose& out) {
+  if (!skeleton.IsValid() || !clip.IsValid(skeleton) || !Finite(time)) {
+    return false;
+  }
+  return SampleValidatedClip(skeleton, clip, time, out);
+}
+bool SampleClipUnchecked(const Skeleton& skeleton, const Clip& clip, float time, Pose& out) {
+  if (skeleton.joints.empty()) {
+    return false;
+  }
+  return SampleValidatedClip(skeleton, clip, time, out);
+}
 bool BlendPoses(const Pose& a, const Pose& b, float t, Pose& out) {
   if (a.joints.size() != b.joints.size()) {
     return false;
@@ -416,13 +429,19 @@ bool BlendPoses(const Pose& a, const Pose& b, float t, Pose& out) {
   return true;
 }
 bool ComputeModelMatrices(const Skeleton& skeleton, const Pose& pose, std::vector<float>& out) {
+  ModelScratch scratch;
+  return ComputeModelMatrices(skeleton, pose, out, scratch);
+}
+bool ComputeModelMatrices(const Skeleton& skeleton, const Pose& pose, std::vector<float>& out, ModelScratch& scratch) {
   const size_t count = skeleton.joints.size();
   if (count == 0 || pose.joints.size() != count) {
     return false;
   }
   out.assign(count * 16, 0.0f);
-  std::vector<unsigned char> state(count, 0);
-  std::vector<int> chain;
+  scratch.state.assign(count, 0);
+  scratch.chain.clear();
+  unsigned char* state = scratch.state.data();
+  std::vector<int>& chain = scratch.chain;
   float* destination = out.data();
   for (size_t i = 0; i < count; ++i) {
     if (state[i] == 2) {
