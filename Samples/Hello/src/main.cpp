@@ -2696,6 +2696,7 @@ bool TestAnimatorRuntime() {
   float proj[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1.1111112f, 1, 0, 0, -1.1111112f, 0 };
   float cam[3] = { 0.0f, 0.0f, 5.0f };
   bool ok = Kizuri::AnimatorRuntime::MeshIsSkinned(mesh);
+  int stage = 1;
   ok = ok && Kizuri::AnimatorRuntime::RecordIsSkinned(assets, "anim_runtime_mesh");
   ok = ok && !Kizuri::AnimatorRuntime::RecordIsSkinned(assets, "missing_anim_mesh");
   renderer.BeginObjects(view, proj);
@@ -2711,6 +2712,7 @@ bool TestAnimatorRuntime() {
   runtime.BeginFrame();
   ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
   ok = ok && runtime.GetBoneRange(id, 0).offset == range.offset + 2;
+  stage = 2;
   entity->hasAnimator = true;
   Kizuri::MakeDefaultAnimator(entity->animator);
   entity->animator.clipName = "Walk";
@@ -2725,6 +2727,7 @@ bool TestAnimatorRuntime() {
   bones = runtime.BoneMatrices(id, 0);
   ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 0.4f);
   entity->animator.loop = false;
+  stage = 3;
   runtime.BeginFrame();
   runtime.Update(scene, assets, 10.0f);
   ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
@@ -2732,6 +2735,7 @@ bool TestAnimatorRuntime() {
   ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 2.0f);
   entity->animator.loop = true;
   entity->animator.speed = 2.0f;
+  stage = 4;
   runtime.SetSimulating(false);
   runtime.SetSimulating(true);
   runtime.BeginFrame();
@@ -2739,6 +2743,7 @@ bool TestAnimatorRuntime() {
   ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
   bones = runtime.BoneMatrices(id, 0);
   ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 1.2f);
+  stage = 5;
   entity->animator.playing = false;
   runtime.BeginFrame();
   runtime.Update(scene, assets, 5.0f);
@@ -2748,12 +2753,14 @@ bool TestAnimatorRuntime() {
   entity->animator.playing = true;
   entity->animator.speed = 1.0f;
   entity->animator.clipName = "Idle";
+  stage = 6;
   runtime.BeginFrame();
   ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
   bones = runtime.BoneMatrices(id, 0);
   ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], 3.0f);
   entity->animator.clipName.clear();
   mesh.skins[0].joints[0].inverseBind[12] = -10.0f;
+  stage = 7;
   assets.UpsertBatchMesh("anim_runtime_mesh", mesh);
   runtime.BeginFrame();
   ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
@@ -2761,6 +2768,7 @@ bool TestAnimatorRuntime() {
   ok = ok && bones != nullptr && bones->size() == 32 && AnimatorTestNear((*bones)[12], -10.0f);
   Kizuri::MeshAssetData bad = mesh;
   bad.skinJoints[0] = 7;
+  stage = 8;
   assets.UpsertBatchMesh("anim_bad_mesh", bad);
   const Kizuri::EntityId badId = scene.CreateEntity("anim_bad");
   Kizuri::Entity* badEntity = scene.Get(badId);
@@ -2775,6 +2783,7 @@ bool TestAnimatorRuntime() {
   }
   Kizuri::MeshAssetData mixed = MakeAnimatorTestMesh();
   mixed.guid = "anim_mixed_mesh";
+  stage = 9;
   const float mixedPositions[9] = { 0.0f, 0.0f, 2.0f, 1.0f, 0.0f, 2.0f, 0.0f, 1.0f, 2.0f };
   mixed.positions.insert(mixed.positions.end(), mixedPositions, mixedPositions + 9);
   const float mixedNormals[9] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
@@ -2808,19 +2817,26 @@ bool TestAnimatorRuntime() {
     ok = ok && runtime.AddEntityBones(*mixedEntity, assets, renderer);
     ok = ok && runtime.GetBoneRange(mixedId, 0).count == 2;
   }
+  entity = scene.Get(id);
+  ok = ok && entity != nullptr;
   entity->animator.clipName = "Walk";
   runtime.SetSimulating(false);
+  stage = 10;
   runtime.BeginFrame();
   runtime.Update(scene, assets, 5.0f);
   ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
   bones = runtime.BoneMatrices(id, 0);
   ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], -10.0f);
+  stage = 11;
   runtime.SetSimulating(true);
   runtime.BeginFrame();
   runtime.Update(scene, assets, 0.5f);
   ok = ok && runtime.AddEntityBones(*entity, assets, renderer);
   bones = runtime.BoneMatrices(id, 0);
   ok = ok && bones != nullptr && AnimatorTestNear((*bones)[12], -9.0f);
+  if (!ok) {
+    std::printf("AnimatorRuntime failed at stage %d\n", stage);
+  }
   renderer.EndObjectsToTexture(cam);
   renderer.Shutdown();
   rhi->Shutdown();
