@@ -1,4 +1,4 @@
 #pragma once
 namespace Kizuri {
-void ApplyEditorTheme();
+void ApplyEditorTheme(float scale);
 }

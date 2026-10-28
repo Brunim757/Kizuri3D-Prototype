@@ -6,6 +6,7 @@
 #include "Kizuri/Input.h"
 #include "Kizuri/Path.h"
 #include "Kizuri/QualityPreset.h"
+#include "Kizuri/Dpi.h"
 #include "Kizuri/HardwareSpec.h"
 #include "Kizuri/Settings.h"
 #include "Kizuri/Logger.h"
@@ -29,6 +30,8 @@ namespace Kizuri {
 namespace {
 LogStore* g_sinkLog = nullptr;
 const int kRenderDefaultsVersion = 2;
+const float kInitialWindowWidth = 1600.0f;
+const float kInitialWindowHeight = 900.0f;
 }
 EditorApp::EditorApp()
   : rhi(nullptr)
@@ -48,6 +51,9 @@ EditorApp::EditorApp()
   , showAssetBrowser(true)
   , showAudioMixer(false)
   , dockLayoutBuilt(false)
+  , dpiScalePending(false)
+  , uiScale(1.0f)
+  , pendingUiScale(1.0f)
   , optNoAudio(false)
   , optNoAssets(false)
   , optNoPhysics(false)
@@ -461,13 +467,48 @@ std::string EditorApp::FindAsset(const char* name) {
   }
   return name;
 }
+void EditorApp::ApplyInitialWindowLayout() {
+  void* native = window.NativeHandle();
+  uiScale = ImGui_ImplWin32_GetDpiScaleForHwnd(native);
+  if (uiScale < 1.0f) {
+    uiScale = 1.0f;
+  }
+  HWND hwnd = static_cast<HWND>(native);
+  HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+  MONITORINFO info;
+  info.cbSize = sizeof(info);
+  if (GetMonitorInfoW(monitor, &info) == FALSE) {
+    return;
+  }
+  const int desiredWidth = static_cast<int>(kInitialWindowWidth * uiScale + 0.5f);
+  const int desiredHeight = static_cast<int>(kInitialWindowHeight * uiScale + 0.5f);
+  const WindowPlacement placement = FitWindowToWorkArea(
+    info.rcWork.left,
+    static_cast<int>(info.rcWork.top),
+    static_cast<int>(info.rcWork.right - info.rcWork.left),
+    static_cast<int>(info.rcWork.bottom - info.rcWork.top),
+    desiredWidth,
+    desiredHeight);
+  SetWindowPos(hwnd, nullptr, placement.x, placement.y, placement.width, placement.height, SWP_NOZORDER | SWP_NOACTIVATE);
+}
 bool EditorApp::Initialize() {
   initError.clear();
   if (!window.Create(L"Kizuri3D Editor", 1600, 900)) {
     initError = "Janela Win32 nao criada.";
     return false;
   }
+  ApplyInitialWindowLayout();
   window.SetMessageHook([this](void* hwnd, unsigned int msg, unsigned long long wParam, long long lParam) -> long long {
+    if (msg == WM_DPICHANGED) {
+      RECT* suggested = reinterpret_cast<RECT*>(static_cast<uintptr_t>(lParam));
+      SetWindowPos(static_cast<HWND>(hwnd), nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
+      pendingUiScale = ImGui_ImplWin32_GetDpiScaleForHwnd(hwnd);
+      if (pendingUiScale < 1.0f) {
+        pendingUiScale = 1.0f;
+      }
+      dpiScalePending = true;
+      return 1;
+    }
     if (msg == WM_DROPFILES) {
       HandleOsDrop(reinterpret_cast<void*>(static_cast<uintptr_t>(lParam)));
       return 1;
@@ -506,7 +547,7 @@ bool EditorApp::Initialize() {
   ImGuiIO& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-  ApplyEditorTheme();
+  ApplyEditorTheme(uiScale);
   ImGui_ImplWin32_Init(window.NativeHandle());
   ImGui_ImplDX11_Init(static_cast<ID3D11Device*>(rhi->GetNativeDevice()), static_cast<ID3D11DeviceContext*>(rhi->GetNativeContext()));
   std::string cubePath = FindAsset("cube.gltf");
@@ -711,6 +752,11 @@ int EditorApp::Run() {
       char fpsBuf[64];
       std::snprintf(fpsBuf, sizeof(fpsBuf), "%.0f FPS", fpsSmooth);
       fpsShown = fpsBuf;
+    }
+    if (dpiScalePending) {
+      dpiScalePending = false;
+      uiScale = pendingUiScale;
+      ApplyEditorTheme(uiScale);
     }
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();

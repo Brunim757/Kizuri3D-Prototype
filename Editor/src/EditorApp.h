@@ -104,6 +104,9 @@ struct EditorApp {
   bool showAssetBrowser;
   bool showAudioMixer;
   bool dockLayoutBuilt;
+  bool dpiScalePending;
+  float uiScale;
+  float pendingUiScale;
   bool optNoAudio;
   bool optNoAssets;
   bool optNoPhysics;
@@ -298,6 +301,7 @@ struct EditorApp {
   void SetNoAssets(bool v) { optNoAssets = v; }
   void SetNoPhysics(bool v) { optNoPhysics = v; }
   bool Initialize();
+  void ApplyInitialWindowLayout();
   int Run();
   void Shutdown();
   void Frame();

@@ -8,6 +8,7 @@ namespace {
 ImVec4 Rgb(int r, int g, int b, int a = 255) {
   return ImVec4(static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f, static_cast<float>(a) / 255.0f);
 }
+const float kBaseFontSize = 16.0f;
 const char* EditorFontCandidates() {
   static const char* paths[] = {
     "C:\\Windows\\Fonts\\segoeui.ttf",
@@ -23,9 +24,13 @@ const char* EditorFontCandidates() {
   return nullptr;
 }
 }
-void ApplyEditorTheme() {
-  ImGui::StyleColorsDark();
+void ApplyEditorTheme(float scale) {
+  if (scale < 1.0f) {
+    scale = 1.0f;
+  }
   ImGuiStyle& style = ImGui::GetStyle();
+  style = ImGuiStyle();
+  ImGui::StyleColorsDark();
   ImVec4* c = style.Colors;
   c[ImGuiCol_WindowBg] = Rgb(30, 30, 30);
   c[ImGuiCol_ChildBg] = Rgb(30, 30, 30);
@@ -99,13 +104,16 @@ void ApplyEditorTheme() {
   style.GrabMinSize = 10.0f;
   style.WindowMenuButtonPosition = ImGuiDir_None;
   style.Alpha = 1.0f;
+  style.FontSizeBase = kBaseFontSize * scale;
+  style.ScaleAllSizes(scale);
 
   ImGuiIO& io = ImGui::GetIO();
-  const char* fontPath = EditorFontCandidates();
-  ImFont* font = fontPath != nullptr ? io.Fonts->AddFontFromFileTTF(fontPath, 15.0f) : nullptr;
-  if (font == nullptr) {
-    io.Fonts->AddFontDefault();
-  } else {
+  if (io.Fonts->Fonts.Size == 0) {
+    const char* fontPath = EditorFontCandidates();
+    ImFont* font = fontPath != nullptr ? io.Fonts->AddFontFromFileTTF(fontPath, kBaseFontSize) : nullptr;
+    if (font == nullptr) {
+      font = io.Fonts->AddFontDefault();
+    }
     io.FontDefault = font;
   }
 }

@@ -22,6 +22,7 @@
 #include "Kizuri/DebugDraw.h"
 #include "Kizuri/Shadows.h"
 #include "Kizuri/QualityPreset.h"
+#include "Kizuri/Dpi.h"
 #include "Kizuri/DeferredRenderer.h"
 #include "Kizuri/RenderGraph.h"
 #include "Kizuri/FramePacer.h"
@@ -8309,6 +8310,28 @@ bool TestOcclusionCull() {
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+bool TestDpiLayout() {
+  if (Kizuri::DpiScaleFromValue(0) != 1.0f || Kizuri::DpiScaleFromValue(72) != 1.0f || Kizuri::DpiScaleFromValue(96) != 1.0f) {
+    return false;
+  }
+  if (Kizuri::DpiScaleFromValue(120) != 1.25f || Kizuri::DpiScaleFromValue(144) != 1.5f || Kizuri::DpiScaleFromValue(192) != 2.0f) {
+    return false;
+  }
+  Kizuri::WindowPlacement fit = Kizuri::FitWindowToWorkArea(0, 0, 1920, 1040, 1600, 900);
+  if (fit.x != 160 || fit.y != 70 || fit.width != 1600 || fit.height != 900) {
+    return false;
+  }
+  Kizuri::WindowPlacement clamped = Kizuri::FitWindowToWorkArea(0, 0, 1366, 728, 1600, 900);
+  if (clamped.x != 55 || clamped.y != 29 || clamped.width != 1256 || clamped.height != 669) {
+    return false;
+  }
+  Kizuri::WindowPlacement offset = Kizuri::FitWindowToWorkArea(1920, -100, 2560, 1400, 3200, 1800);
+  if (offset.x != 2022 || offset.y != -44 || offset.width != 2355 || offset.height != 1288) {
+    return false;
+  }
+  Kizuri::WindowPlacement fallback = Kizuri::FitWindowToWorkArea(10, 20, 0, 0, 1600, 900);
+  return fallback.x == 10 && fallback.y == 20 && fallback.width == 1600 && fallback.height == 900;
+}
 bool TestQualityPreset() {
   Kizuri::QualitySettings def = Kizuri::ApplyQualityPreset(Kizuri::QualityLevel::Default);
   if (!def.ssao || def.ssr || def.ssrTemporal || def.contact || def.ssgi || def.ddgi || def.dof || def.motionBlur || !def.fxaa || def.taa || !def.fog || def.bloom != 0.0f || def.renderScale != 1.0f || def.dynRes || !def.occ || def.shadowAuto || def.godRays) {
@@ -13515,6 +13538,7 @@ int main() {
   failures += Check("RectLight", TestRectLight());
   failures += Check("LightFeatures", TestLightFeatures());
   failures += Check("QualityPreset", TestQualityPreset());
+  failures += Check("DpiLayout", TestDpiLayout());
   failures += Check("QualityToRenderer", TestQualityToRenderer());
   failures += Check("MotionStable", TestMotionStable());
   failures += Check("IblBake", TestIblBake());
