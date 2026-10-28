@@ -61,6 +61,29 @@ bool TryBuildMeshlets(MeshAssetData& data, std::vector<MeshletRange>& out) {
     return false;
   }
 }
+void WriteInterleavedStatic(const MeshAssetData& data, size_t v, float* dst, bool hasUv, bool hasTan, bool hasUv2) {
+  dst[0] = data.positions[v * 3 + 0];
+  dst[1] = data.positions[v * 3 + 1];
+  dst[2] = data.positions[v * 3 + 2];
+  dst[3] = data.normals[v * 3 + 0];
+  dst[4] = data.normals[v * 3 + 1];
+  dst[5] = data.normals[v * 3 + 2];
+  dst[6] = hasUv ? data.uvs[v * 2 + 0] : 0.0f;
+  dst[7] = hasUv ? data.uvs[v * 2 + 1] : 0.0f;
+  if (hasTan) {
+    dst[8] = data.tangents[v * 4 + 0];
+    dst[9] = data.tangents[v * 4 + 1];
+    dst[10] = data.tangents[v * 4 + 2];
+    dst[11] = data.tangents[v * 4 + 3];
+  } else {
+    dst[8] = 1.0f;
+    dst[9] = 0.0f;
+    dst[10] = 0.0f;
+    dst[11] = 1.0f;
+  }
+  dst[12] = hasUv2 ? data.uv2s[v * 2 + 0] : 0.0f;
+  dst[13] = hasUv2 ? data.uv2s[v * 2 + 1] : 0.0f;
+}
 void BuildInterleavedRange(const MeshAssetData& data, size_t firstVertex, size_t vertexCount, std::vector<unsigned char>& out) {
   size_t totalVerts = data.positions.size() / 3;
   bool hasUv = data.uvs.size() == totalVerts * 2;
@@ -69,29 +92,22 @@ void BuildInterleavedRange(const MeshAssetData& data, size_t firstVertex, size_t
   out.resize(vertexCount * 14 * sizeof(float));
   float* dst = reinterpret_cast<float*>(out.data());
   for (size_t i = 0; i < vertexCount; ++i) {
+    WriteInterleavedStatic(data, firstVertex + i, dst + i * 14, hasUv, hasTan, hasUv2);
+  }
+}
+void BuildInterleavedSkinnedRange(const MeshAssetData& data, size_t firstVertex, size_t vertexCount, std::vector<unsigned char>& out) {
+  size_t totalVerts = data.positions.size() / 3;
+  bool hasUv = data.uvs.size() == totalVerts * 2;
+  bool hasTan = data.tangents.size() == totalVerts * 4;
+  bool hasUv2 = data.uv2s.size() == totalVerts * 2;
+  out.resize(vertexCount * 22 * sizeof(float));
+  float* dst = reinterpret_cast<float*>(out.data());
+  for (size_t i = 0; i < vertexCount; ++i) {
     size_t v = firstVertex + i;
-    size_t o = i * 14;
-    dst[o + 0] = data.positions[v * 3 + 0];
-    dst[o + 1] = data.positions[v * 3 + 1];
-    dst[o + 2] = data.positions[v * 3 + 2];
-    dst[o + 3] = data.normals[v * 3 + 0];
-    dst[o + 4] = data.normals[v * 3 + 1];
-    dst[o + 5] = data.normals[v * 3 + 2];
-    dst[o + 6] = hasUv ? data.uvs[v * 2 + 0] : 0.0f;
-    dst[o + 7] = hasUv ? data.uvs[v * 2 + 1] : 0.0f;
-    if (hasTan) {
-      dst[o + 8] = data.tangents[v * 4 + 0];
-      dst[o + 9] = data.tangents[v * 4 + 1];
-      dst[o + 10] = data.tangents[v * 4 + 2];
-      dst[o + 11] = data.tangents[v * 4 + 3];
-    } else {
-      dst[o + 8] = 1.0f;
-      dst[o + 9] = 0.0f;
-      dst[o + 10] = 0.0f;
-      dst[o + 11] = 1.0f;
-    }
-    dst[o + 12] = hasUv2 ? data.uv2s[v * 2 + 0] : 0.0f;
-    dst[o + 13] = hasUv2 ? data.uv2s[v * 2 + 1] : 0.0f;
+    float* o = dst + i * 22;
+    WriteInterleavedStatic(data, v, o, hasUv, hasTan, hasUv2);
+    std::memcpy(o + 14, data.skinJoints.data() + v * 4, 4 * sizeof(uint32_t));
+    std::memcpy(o + 18, data.skinWeights.data() + v * 4, 4 * sizeof(float));
   }
 }
 }
@@ -1040,6 +1056,7 @@ MeshRecord* AssetDatabase::UpsertResult(ImportResult& result) {
     existing->sourceHash = result.data.sourceHash;
     existing->hasSource = result.data.hasSource;
     existing->data = std::move(result.data);
+    ++existing->dataRevision;
     existing->loaded = true;
     existing->meshlets = std::move(result.meshlets);
     existing->meshletsBuilt = result.meshletsBuilt;
@@ -1053,6 +1070,7 @@ MeshRecord* AssetDatabase::UpsertResult(ImportResult& result) {
     record.sourceHash = result.data.sourceHash;
     record.hasSource = result.data.hasSource;
     record.data = std::move(result.data);
+    record.dataRevision = 1;
     record.loaded = true;
     record.meshlets = std::move(result.meshlets);
     record.meshletsBuilt = result.meshletsBuilt;
@@ -1394,6 +1412,7 @@ void AssetDatabase::UpsertBatchMesh(const std::string& key, const MeshAssetData&
   if (it != records.end()) {
     DropMeshGpu(it->second);
     it->second.data = data;
+    ++it->second.dataRevision;
     it->second.loaded = true;
     it->second.meshlets.clear();
     it->second.meshletsBuilt = false;
@@ -1407,6 +1426,7 @@ void AssetDatabase::UpsertBatchMesh(const std::string& key, const MeshAssetData&
   rec.hasSource = false;
   rec.state = MeshAssetState::NoSource;
   rec.data = data;
+  rec.dataRevision = 1;
   rec.loaded = true;
   rec.lastSeenSourceTime = 0;
   records.emplace(key, std::move(rec));
@@ -2212,18 +2232,24 @@ void AssetDatabase::DropMeshGpu(MeshRecord& record) {
     if (record.gpuVB != 0) {
       gpuRhi->DestroyBuffer(record.gpuVB);
     }
+    if (record.gpuVBSkinned != 0) {
+      gpuRhi->DestroyBuffer(record.gpuVBSkinned);
+    }
     if (record.gpuIB != 0) {
       gpuRhi->DestroyBuffer(record.gpuIB);
     }
   }
   record.gpuVB = 0;
+  record.gpuVBSkinned = 0;
   record.gpuIB = 0;
   record.gpuCount = 0;
   record.gpuReady = false;
   record.gpuFailed = false;
   record.gpuVBBytes = 0;
+  record.gpuVBSkinnedBytes = 0;
   record.gpuIBBytes = 0;
   record.stageVBDone = 0;
+  record.stageSkinnedDone = 0;
   record.stageIBDone = 0;
   record.gpuError.clear();
 }
@@ -2267,38 +2293,73 @@ bool AssetDatabase::EnsureMeshGpu(const std::string& guid, size_t maxBytes) {
     FailMeshGpu(*record, "Mesh data has invalid normals");
     return false;
   }
-  uint64_t vbBytes = static_cast<uint64_t>(vertexCount) * 56ull;
+  if (!record->data.partSkins.empty() && record->data.partSkins.size() != record->data.parts.size()) {
+    FailMeshGpu(*record, "Mesh part skin table is invalid");
+    return false;
+  }
+  bool hasStaticParts = record->data.parts.empty();
+  bool hasSkinnedParts = false;
+  for (size_t i = 0; i < record->data.parts.size(); ++i) {
+    uint32_t skin = record->data.partSkins.empty() ? 0xFFFFFFFFu : record->data.partSkins[i];
+    if (skin == 0xFFFFFFFFu) {
+      hasStaticParts = true;
+      continue;
+    }
+    if (skin >= record->data.skins.size()) {
+      FailMeshGpu(*record, "Mesh part references an invalid skin");
+      return false;
+    }
+    hasSkinnedParts = true;
+  }
+  if (hasSkinnedParts && (record->data.skinJoints.size() != vertexCount * 4 || record->data.skinWeights.size() != vertexCount * 4)) {
+    FailMeshGpu(*record, "Mesh data has invalid skin vertices");
+    return false;
+  }
+  uint64_t vbBytes = hasStaticParts ? static_cast<uint64_t>(vertexCount) * 56ull : 0ull;
+  uint64_t skinnedVbBytes = hasSkinnedParts ? static_cast<uint64_t>(vertexCount) * 88ull : 0ull;
   uint64_t ibBytes = static_cast<uint64_t>(record->data.indices.size()) * 4ull;
-  if (vbBytes > 0xFFFFFFFFull || ibBytes > 0xFFFFFFFFull) {
+  if (vbBytes > 0xFFFFFFFFull || skinnedVbBytes > 0xFFFFFFFFull || ibBytes > 0xFFFFFFFFull) {
     FailMeshGpu(*record, "Mesh exceeds the 4 GB GPU buffer limit");
     return false;
   }
   uint64_t vbAlloc = (vbBytes + 15ull) & ~15ull;
+  uint64_t skinnedVbAlloc = (skinnedVbBytes + 15ull) & ~15ull;
   uint64_t ibAlloc = (ibBytes + 15ull) & ~15ull;
-  if (vbAlloc > 0xFFFFFFFFull || ibAlloc > 0xFFFFFFFFull) {
+  if (vbAlloc > 0xFFFFFFFFull || skinnedVbAlloc > 0xFFFFFFFFull || ibAlloc > 0xFFFFFFFFull) {
     FailMeshGpu(*record, "Mesh exceeds the 4 GB GPU buffer limit");
     return false;
   }
-  if (record->gpuVB != 0 && (record->gpuVBBytes != vbBytes || record->gpuIBBytes != ibBytes)) {
+  if ((record->gpuVB != 0 && record->gpuVBBytes != vbBytes) || (record->gpuVBSkinned != 0 && record->gpuVBSkinnedBytes != skinnedVbBytes)) {
     DropMeshGpu(*record);
   }
-  if (record->gpuVB == 0) {
+  if (record->gpuVB == 0 && vbBytes != 0) {
     RHIBuffer vb = gpuRhi->CreateBuffer(vbAlloc, 56, false, nullptr);
     if (vb == 0) {
       FailMeshGpu(*record, "GPU vertex buffer allocation failed");
       return false;
     }
+    record->gpuVB = vb;
+    record->gpuVBBytes = vbBytes;
+    record->stageVBDone = 0;
+  }
+  if (record->gpuVBSkinned == 0 && skinnedVbBytes != 0) {
+    RHIBuffer vb = gpuRhi->CreateBuffer(skinnedVbAlloc, 88, false, nullptr);
+    if (vb == 0) {
+      FailMeshGpu(*record, "GPU skinned vertex buffer allocation failed");
+      return false;
+    }
+    record->gpuVBSkinned = vb;
+    record->gpuVBSkinnedBytes = skinnedVbBytes;
+    record->stageSkinnedDone = 0;
+  }
+  if (record->gpuIB == 0) {
     RHIBuffer ib = gpuRhi->CreateBuffer(ibAlloc, 4, true, nullptr);
     if (ib == 0) {
-      gpuRhi->DestroyBuffer(vb);
       FailMeshGpu(*record, "GPU index buffer allocation failed");
       return false;
     }
-    record->gpuVB = vb;
     record->gpuIB = ib;
-    record->gpuVBBytes = vbBytes;
     record->gpuIBBytes = ibBytes;
-    record->stageVBDone = 0;
     record->stageIBDone = 0;
   }
   size_t budget = maxBytes;
@@ -2327,6 +2388,37 @@ bool AssetDatabase::EnsureMeshGpu(const std::string& guid, size_t maxBytes) {
       return false;
     }
     record->stageVBDone += chunkBytes;
+    if (chunkBytes >= budget) {
+      budget = 0;
+    } else {
+      budget -= static_cast<size_t>(chunkBytes);
+    }
+  }
+  while (budget > 0 && record->stageSkinnedDone < skinnedVbBytes) {
+    uint64_t remain = skinnedVbBytes - record->stageSkinnedDone;
+    uint64_t chunkVerts = static_cast<uint64_t>(budget) / 88ull;
+    if (chunkVerts < 2) {
+      chunkVerts = 2;
+    }
+    chunkVerts &= ~1ull;
+    uint64_t maxVerts = remain / 88ull;
+    if (chunkVerts > maxVerts) {
+      chunkVerts = maxVerts;
+    }
+    if (chunkVerts == 0) {
+      break;
+    }
+    uint64_t chunkBytes = chunkVerts * 88ull;
+    uint64_t uploadBytes = (chunkBytes + 15ull) & ~15ull;
+    BuildInterleavedSkinnedRange(record->data, static_cast<size_t>(record->stageSkinnedDone / 88ull), static_cast<size_t>(chunkVerts), meshUploadScratch);
+    if (meshUploadScratch.size() < uploadBytes) {
+      meshUploadScratch.resize(static_cast<size_t>(uploadBytes), 0);
+    }
+    if (!gpuRhi->UpdateBufferRange(record->gpuVBSkinned, record->stageSkinnedDone, meshUploadScratch.data(), static_cast<size_t>(uploadBytes))) {
+      FailMeshGpu(*record, "GPU skinned vertex upload failed");
+      return false;
+    }
+    record->stageSkinnedDone += chunkBytes;
     if (chunkBytes >= budget) {
       budget = 0;
     } else {
@@ -2362,7 +2454,9 @@ bool AssetDatabase::EnsureMeshGpu(const std::string& guid, size_t maxBytes) {
       budget -= static_cast<size_t>(chunkBytes);
     }
   }
-  if (record->stageVBDone == vbBytes && record->stageIBDone == ibBytes) {
+  bool vbDone = vbBytes == 0 || record->stageVBDone == vbBytes;
+  bool skinnedDone = skinnedVbBytes == 0 || record->stageSkinnedDone == skinnedVbBytes;
+  if (vbDone && skinnedDone && record->stageIBDone == ibBytes) {
     record->gpuCount = static_cast<uint32_t>(record->data.indices.size());
     record->gpuReady = true;
     return true;

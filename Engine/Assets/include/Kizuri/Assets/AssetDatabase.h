@@ -32,14 +32,18 @@ struct MeshRecord {
   bool loaded;
   int64_t lastSeenSourceTime;
   RHIBuffer gpuVB = 0;
+  RHIBuffer gpuVBSkinned = 0;
   RHIBuffer gpuIB = 0;
   uint32_t gpuCount = 0;
   bool gpuReady = false;
   bool gpuFailed = false;
   uint64_t gpuVBBytes = 0;
+  uint64_t gpuVBSkinnedBytes = 0;
   uint64_t gpuIBBytes = 0;
   uint64_t stageVBDone = 0;
+  uint64_t stageSkinnedDone = 0;
   uint64_t stageIBDone = 0;
+  uint64_t dataRevision = 0;
   std::string gpuError;
   bool meshletsBuilt = false;
   std::vector<MeshletRange> meshlets;

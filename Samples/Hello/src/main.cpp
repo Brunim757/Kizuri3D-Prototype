@@ -12646,6 +12646,166 @@ bool TestMeshletsBackground() {
   fs::remove_all(dir, ec);
   return true;
 }
+bool TestMeshSkinnedUpload() {
+  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
+  if (rhi == nullptr) {
+    return false;
+  }
+  Kizuri::RHIDesc desc;
+  desc.windowHandle = nullptr;
+  desc.width = 64;
+  desc.height = 64;
+  desc.vsync = false;
+  if (!rhi->Initialize(desc)) {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  auto fail = [&]() -> bool {
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  };
+  Kizuri::AssetDatabase db;
+  db.SetGpuRHI(rhi);
+  Kizuri::MeshAssetData data;
+  data.guid = "batch://skinned";
+  const size_t nv = 200;
+  for (size_t i = 0; i < nv; ++i) {
+    data.positions.push_back(static_cast<float>(i) * 0.01f);
+    data.positions.push_back(0.0f);
+    data.positions.push_back(0.0f);
+    data.normals.push_back(0.0f);
+    data.normals.push_back(1.0f);
+    data.normals.push_back(0.0f);
+    data.uvs.push_back(0.0f);
+    data.uvs.push_back(0.0f);
+  }
+  for (uint32_t i = 0; i + 2 < nv; i += 3) {
+    data.indices.push_back(i);
+    data.indices.push_back(i + 1);
+    data.indices.push_back(i + 2);
+  }
+  Kizuri::MeshPartData part;
+  part.indexOffset = 0;
+  part.indexCount = static_cast<uint32_t>(data.indices.size());
+  part.material = 0;
+  data.parts.push_back(part);
+  data.partSkins.push_back(0);
+  Kizuri::MeshSkinData skin;
+  Kizuri::MeshSkinJointData joint;
+  joint.name = "root";
+  skin.joints.push_back(joint);
+  data.skins.push_back(skin);
+  data.skinJoints.assign(nv * 4, 0);
+  for (size_t i = 0; i < nv; ++i) {
+    data.skinWeights.push_back(1.0f);
+    data.skinWeights.push_back(0.0f);
+    data.skinWeights.push_back(0.0f);
+    data.skinWeights.push_back(0.0f);
+  }
+  data.aabbMin[0] = 0.0f;
+  data.aabbMin[1] = 0.0f;
+  data.aabbMin[2] = 0.0f;
+  data.aabbMax[0] = static_cast<float>(nv) * 0.01f;
+  data.aabbMax[1] = 0.0f;
+  data.aabbMax[2] = 0.0f;
+  data.hasSource = false;
+  data.sourceHash = 0;
+  data.sourceTimestamp = 0;
+  db.UpsertBatchMesh("batch://skinned", data);
+  const Kizuri::MeshRecord* rec = db.GetByGuid("batch://skinned");
+  if (rec == nullptr || rec->dataRevision != 1) {
+    return fail();
+  }
+  data.positions[0] = 0.5f;
+  db.UpsertBatchMesh("batch://skinned", data);
+  rec = db.GetByGuid("batch://skinned");
+  if (rec == nullptr || rec->dataRevision != 2 || rec->gpuReady) {
+    return fail();
+  }
+  if (db.EnsureMeshGpu("batch://skinned", 4096)) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://skinned");
+  uint64_t skinnedBytes = static_cast<uint64_t>(nv) * 88ull;
+  if (rec == nullptr || rec->gpuReady || rec->gpuVB != 0 || rec->gpuVBBytes != 0 || rec->gpuVBSkinned == 0 || rec->gpuVBSkinnedBytes != skinnedBytes || rec->stageVBDone != 0 || rec->stageSkinnedDone == 0 || rec->stageSkinnedDone >= skinnedBytes || rec->gpuIB == 0) {
+    return fail();
+  }
+  int iters = 0;
+  while (!db.EnsureMeshGpu("batch://skinned", 4096)) {
+    if (++iters > 10000) {
+      return fail();
+    }
+  }
+  if (iters < 2) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://skinned");
+  if (rec == nullptr || !rec->gpuReady || rec->gpuCount != static_cast<uint32_t>(data.indices.size()) || rec->gpuVBSkinned == 0 || rec->gpuVB != 0 || rec->stageSkinnedDone != skinnedBytes || rec->stageIBDone != rec->gpuIBBytes || rec->dataRevision != 2) {
+    return fail();
+  }
+  db.RetryMeshGpu("batch://skinned");
+  rec = db.GetByGuid("batch://skinned");
+  if (rec == nullptr || rec->gpuReady || rec->gpuVBSkinned != 0 || rec->gpuVBSkinnedBytes != 0 || rec->stageSkinnedDone != 0 || rec->gpuVB != 0) {
+    return fail();
+  }
+  if (!db.EnsureMeshGpu("batch://skinned", 1048576)) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://skinned");
+  if (rec == nullptr || !rec->gpuReady) {
+    return fail();
+  }
+  Kizuri::MeshAssetData mixed = data;
+  mixed.guid = "batch://mixed";
+  mixed.parts.clear();
+  Kizuri::MeshPartData firstPart;
+  firstPart.indexOffset = 0;
+  firstPart.indexCount = 3;
+  firstPart.material = 0;
+  Kizuri::MeshPartData secondPart;
+  secondPart.indexOffset = 3;
+  secondPart.indexCount = static_cast<uint32_t>(mixed.indices.size() - 3);
+  secondPart.material = 0;
+  mixed.parts.push_back(firstPart);
+  mixed.parts.push_back(secondPart);
+  mixed.partSkins.clear();
+  mixed.partSkins.push_back(0xFFFFFFFFu);
+  mixed.partSkins.push_back(0);
+  db.UpsertBatchMesh("batch://mixed", mixed);
+  if (!db.EnsureMeshGpu("batch://mixed", 1048576)) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://mixed");
+  if (rec == nullptr || !rec->gpuReady || rec->gpuVB == 0 || rec->gpuVBSkinned == 0 || rec->gpuVBBytes != static_cast<uint64_t>(nv) * 56ull || rec->gpuVBSkinnedBytes != skinnedBytes) {
+    return fail();
+  }
+  Kizuri::MeshAssetData badSkin = data;
+  badSkin.guid = "batch://badskin";
+  badSkin.partSkins.clear();
+  badSkin.partSkins.push_back(5);
+  db.UpsertBatchMesh("batch://badskin", badSkin);
+  if (db.EnsureMeshGpu("batch://badskin", 1048576)) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://badskin");
+  if (rec == nullptr || !rec->gpuFailed || rec->gpuError.empty()) {
+    return fail();
+  }
+  Kizuri::MeshAssetData badVerts = data;
+  badVerts.guid = "batch://badskinverts";
+  badVerts.skinJoints.clear();
+  badVerts.skinWeights.clear();
+  db.UpsertBatchMesh("batch://badskinverts", badVerts);
+  if (db.EnsureMeshGpu("batch://badskinverts", 1048576)) {
+    return fail();
+  }
+  rec = db.GetByGuid("batch://badskinverts");
+  if (rec == nullptr || !rec->gpuFailed || rec->gpuError.empty()) {
+    return fail();
+  }
+  Kizuri::DestroyRHI(rhi);
+  return true;
+}
 }
 int main() {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -12863,6 +13023,7 @@ int main() {
   failures += Check("RHIBuffers", TestRHIBuffers());
   failures += Check("MeshStaging", TestMeshStaging());
   failures += Check("MeshGpuRetry", TestMeshGpuRetry());
+  failures += Check("MeshSkinnedUpload", TestMeshSkinnedUpload());
   failures += Check("MeshletsBackground", TestMeshletsBackground());
   failures += Check("SetMeshGuid", TestSetMeshGuid());
   failures += Check("AddRemoveMesh", TestAddRemoveMeshComponent());
