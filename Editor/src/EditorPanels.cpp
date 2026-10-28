@@ -2511,6 +2511,7 @@ void EditorApp::ApplyCustomQuality() {
   viewSsrTemporal = qs.ssrTemporal;
   viewContact = qs.contact;
   viewSsgi = qs.ssgi;
+  viewDdgi = qs.ddgi;
   viewDof = qs.dof;
   viewMotion = qs.motionBlur;
   viewFxaa = qs.fxaa;
@@ -2545,6 +2546,7 @@ void EditorApp::SnapshotCustomQuality() {
   customQs.ssrTemporal = viewSsrTemporal;
   customQs.contact = viewContact;
   customQs.ssgi = viewSsgi;
+  customQs.ddgi = viewDdgi;
   customQs.dof = viewDof;
   customQs.motionBlur = viewMotion;
   customQs.fxaa = viewFxaa;
@@ -2659,10 +2661,10 @@ void EditorApp::DrawSettings() {
       ImGui::EndTabItem();
     }
     if (ImGui::BeginTabItem("Render")) {
-      int q = viewQuality < 0 ? 2 : (viewQuality > 4 ? 4 : viewQuality);
-      if (ImGui::Combo("Quality", &q, "Low\0Medium\0High\0Ultra\0Custom\0")) {
+      int q = viewQuality < 0 ? static_cast<int>(Kizuri::QualityLevel::Default) : (viewQuality > static_cast<int>(Kizuri::QualityLevel::Custom) ? static_cast<int>(Kizuri::QualityLevel::Custom) : viewQuality);
+      if (ImGui::Combo("Quality", &q, "Default\0Low\0Medium\0High\0Ultra\0Custom\0")) {
         viewQuality = q;
-        if (q == 4) {
+        if (q == static_cast<int>(Kizuri::QualityLevel::Custom)) {
           ApplyCustomQuality();
         } else {
         Kizuri::QualitySettings qs = Kizuri::ApplyQualityPreset(static_cast<Kizuri::QualityLevel>(q));
@@ -2672,6 +2674,7 @@ void EditorApp::DrawSettings() {
         viewSsrTemporal = qs.ssrTemporal;
         viewContact = qs.contact;
         viewSsgi = qs.ssgi;
+        viewDdgi = qs.ddgi;
         viewDof = qs.dof;
         viewMotion = qs.motionBlur;
         viewFxaa = qs.fxaa;
@@ -2705,7 +2708,7 @@ void EditorApp::DrawSettings() {
       if (ImGui::Button("Save Custom")) {
         SnapshotCustomQuality();
         SaveEditorSettings();
-        if (viewQuality == 4) {
+        if (viewQuality == static_cast<int>(Kizuri::QualityLevel::Custom)) {
           ApplyCustomQuality();
         }
       }

@@ -28,6 +28,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 namespace Kizuri {
 namespace {
 LogStore* g_sinkLog = nullptr;
+const int kRenderDefaultsVersion = 2;
 }
 EditorApp::EditorApp()
   : rhi(nullptr)
@@ -61,7 +62,7 @@ EditorApp::EditorApp()
   , viewExposure(1.0f)
   , viewACES(true)
   , viewToneMap(0)
-  , viewAutoExp(false)
+  , viewAutoExp(true)
   , viewRobustExp(true)
   , viewContrast(1.0f)
   , viewSaturation(1.0f)
@@ -69,12 +70,12 @@ EditorApp::EditorApp()
   , viewTint(0.0f)
   , viewLutAmount(0.0f)
   , viewLutPreset(0)
-  , viewBloom(0.5f)
+  , viewBloom(0.0f)
   , viewScale(1.0f)
   , viewSharp(0.5f)
   , viewDynRes(false)
   , viewDynTarget(16.6f)
-  , viewOcc(false)
+  , viewOcc(true)
   , viewGpuDriven(false)
   , viewStaticBatch(true)
   , viewMeshletCull(true)
@@ -108,7 +109,7 @@ EditorApp::EditorApp()
   , viewTess(false)
   , viewTessFactor(4.0f)
   , viewTessDisp(0.15f)
-  , viewDdgi(true)
+  , viewDdgi(false)
   , viewDdgiWeight(0.35f)
   , viewProbeRefresh(true)
   , viewAmbient{ 0.0f, 0.0f, 0.0f }
@@ -121,11 +122,11 @@ EditorApp::EditorApp()
   , viewAoMode(1)
   , viewSsaoIntensity(1.0f)
   , viewSsaoRadius(0.5f)
-  , viewSsr(true)
+  , viewSsr(false)
   , viewSsrTemporal(false)
   , viewSsrTemporalBlend(0.85f)
-  , viewContact(true)
-  , viewSsgi(true)
+  , viewContact(false)
+  , viewSsgi(false)
   , viewFxaa(true)
   , viewTaa(false)
   , viewTaaSharp(0.25f)
@@ -136,8 +137,8 @@ EditorApp::EditorApp()
   , viewMotion(false)
   , viewMotionScale(1.0f)
   , viewCa(0.0f)
-  , viewVig(0.15f)
-  , viewGrain(0.04f)
+  , viewVig(0.0f)
+  , viewGrain(0.0f)
   , viewHeat(0.0f)
   , viewLensDirt(0.0f)
   , viewFog(true)
@@ -148,7 +149,7 @@ EditorApp::EditorApp()
   , viewGodDensity(1.0f)
   , viewGodDecay(0.95f)
   , viewGodIntensity(0.5f)
-  , viewQuality(2)
+  , viewQuality(static_cast<int>(Kizuri::QualityLevel::Default))
   , viewDebug(0)
   , soloLightId(EntityId::Invalid())
   , viewShowBounds(false)
@@ -1426,9 +1427,14 @@ void EditorApp::LoadEditorSettings() {
   if (!cfg.Load(settingsFilePath)) {
     return;
   }
-  viewQuality = static_cast<int>(cfg.GetInt("quality", viewQuality));
-  if (viewQuality < 0 || viewQuality > 4) {
-    viewQuality = 2;
+  const int defaultsVersion = static_cast<int>(cfg.GetInt("renderDefaultsVersion", 0));
+  if (defaultsVersion < kRenderDefaultsVersion) {
+    viewQuality = static_cast<int>(Kizuri::QualityLevel::Default);
+  } else {
+    viewQuality = static_cast<int>(cfg.GetInt("quality", viewQuality));
+  }
+  if (viewQuality < static_cast<int>(Kizuri::QualityLevel::Default) || viewQuality > static_cast<int>(Kizuri::QualityLevel::Custom)) {
+    viewQuality = static_cast<int>(Kizuri::QualityLevel::Default);
   }
   customQs.ssao = cfg.GetBool("cq_ssao", customQs.ssao);
   customQs.aoMode = static_cast<int>(cfg.GetInt("cq_aoMode", customQs.aoMode));
@@ -1436,6 +1442,7 @@ void EditorApp::LoadEditorSettings() {
   customQs.ssrTemporal = cfg.GetBool("cq_ssrTemporal", customQs.ssrTemporal);
   customQs.contact = cfg.GetBool("cq_contact", customQs.contact);
   customQs.ssgi = cfg.GetBool("cq_ssgi", customQs.ssgi);
+  customQs.ddgi = cfg.GetBool("cq_ddgi", customQs.ddgi);
   customQs.dof = cfg.GetBool("cq_dof", customQs.dof);
   customQs.motionBlur = cfg.GetBool("cq_motion", customQs.motionBlur);
   customQs.fxaa = cfg.GetBool("cq_fxaa", customQs.fxaa);
@@ -1451,13 +1458,14 @@ void EditorApp::LoadEditorSettings() {
   customQs.occ = cfg.GetBool("cq_occ", customQs.occ);
   customQs.shadowAuto = cfg.GetBool("cq_shadowAuto", customQs.shadowAuto);
   customQs.godRays = cfg.GetBool("cq_god", customQs.godRays);
-  Kizuri::QualitySettings qs = viewQuality == 4 ? customQs : Kizuri::ApplyQualityPreset(static_cast<Kizuri::QualityLevel>(viewQuality));
+  Kizuri::QualitySettings qs = viewQuality == static_cast<int>(Kizuri::QualityLevel::Custom) ? customQs : Kizuri::ApplyQualityPreset(static_cast<Kizuri::QualityLevel>(viewQuality));
   viewSsao = qs.ssao;
   viewAoMode = qs.aoMode;
   viewSsr = qs.ssr;
   viewSsrTemporal = qs.ssrTemporal;
   viewContact = qs.contact;
   viewSsgi = qs.ssgi;
+  viewDdgi = qs.ddgi;
   viewDof = qs.dof;
   viewMotion = qs.motionBlur;
   viewFxaa = qs.fxaa;
@@ -1483,6 +1491,7 @@ void EditorApp::SaveEditorSettings() {
   Kizuri::Settings cfg;
   cfg.Load(settingsFilePath);
   cfg.SetInt("quality", viewQuality);
+  cfg.SetInt("renderDefaultsVersion", kRenderDefaultsVersion);
   cfg.SetFloat("exposure", viewExposure);
   cfg.SetFloat("envIntensity", viewEnv);
   cfg.SetBool("cq_ssao", customQs.ssao);
@@ -1491,6 +1500,7 @@ void EditorApp::SaveEditorSettings() {
   cfg.SetBool("cq_ssrTemporal", customQs.ssrTemporal);
   cfg.SetBool("cq_contact", customQs.contact);
   cfg.SetBool("cq_ssgi", customQs.ssgi);
+  cfg.SetBool("cq_ddgi", customQs.ddgi);
   cfg.SetBool("cq_dof", customQs.dof);
   cfg.SetBool("cq_motion", customQs.motionBlur);
   cfg.SetBool("cq_fxaa", customQs.fxaa);

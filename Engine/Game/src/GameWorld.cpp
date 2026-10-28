@@ -390,6 +390,7 @@ void ApplyQualityToRenderer(DeferredRenderer& renderer, const QualitySettings& q
   renderer.SetSsrTemporal(q.ssrTemporal, 0.9f);
   renderer.SetContact(q.contact);
   renderer.SetSsgi(q.ssgi);
+  renderer.SetDdgi(q.ddgi, 0.35f);
   renderer.SetDof(q.dof, 10.0f, 10.0f);
   renderer.SetMotionBlur(q.motionBlur, 0.5f);
   renderer.SetFxaa(q.fxaa);
@@ -421,6 +422,7 @@ bool GameWorld::Initialize(IRHI* rhi, int width, int height, const std::string& 
     lastError = "Falha ao inicializar o renderer em " + shaderDir;
     return false;
   }
+  ApplyQualityToRenderer(renderer, ApplyQualityPreset(QualityLevel::Default));
   if (options.lowSpec) {
     QualitySettings low = ApplyQualityPreset(QualityLevel::Low);
     low.renderScale = options.renderScale > 0.0f ? options.renderScale : 0.5f;

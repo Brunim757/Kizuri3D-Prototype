@@ -7849,18 +7849,19 @@ bool TestAutoExposure() {  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API
   float view[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
   float proj[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
   float cam[3] = { 0, 0, 0 };
+  bool ok = renderer.AutoExposureEnabled();
   renderer.SetAutoExposure(true);
   renderer.SetGrading(1.2f, 0.9f, 0.1f, -0.1f);
   renderer.BeginObjects(view, proj);
   renderer.EndObjectsToTexture(cam);
   renderer.BeginObjects(view, proj);
   renderer.EndObjectsToTexture(cam);
-  bool ok = renderer.GetStats().lightingDraws == 1;
+  ok = ok && renderer.GetStats().lightingDraws == 1;
   renderer.SetAutoExposure(false);
   renderer.SetGrading(5.0f, 5.0f, 5.0f, 5.0f);
   renderer.BeginObjects(view, proj);
   renderer.EndObjectsToTexture(cam);
-  ok = ok && renderer.GetStats().lightingDraws == 1;
+  ok = ok && renderer.GetStats().lightingDraws == 1 && !renderer.AutoExposureEnabled();
   renderer.Shutdown();
   rhi->Shutdown();
   Kizuri::DestroyRHI(rhi);
@@ -8309,6 +8310,10 @@ bool TestOcclusionCull() {
   return ok;
 }
 bool TestQualityPreset() {
+  Kizuri::QualitySettings def = Kizuri::ApplyQualityPreset(Kizuri::QualityLevel::Default);
+  if (!def.ssao || def.ssr || def.ssrTemporal || def.contact || def.ssgi || def.ddgi || def.dof || def.motionBlur || !def.fxaa || def.taa || !def.fog || def.bloom != 0.0f || def.renderScale != 1.0f || def.dynRes || !def.occ || def.shadowAuto || def.godRays) {
+    return false;
+  }
   Kizuri::QualitySettings low = Kizuri::ApplyQualityPreset(Kizuri::QualityLevel::Low);
   if (low.ssr || low.ssgi || low.dof || low.motionBlur || !low.fxaa || low.bloom != 0.0f || low.renderScale != 0.75f) {
     return false;

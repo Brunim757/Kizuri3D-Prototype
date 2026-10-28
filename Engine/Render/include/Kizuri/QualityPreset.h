@@ -1,11 +1,12 @@
 #pragma once
 namespace Kizuri {
 enum class QualityLevel {
-  Low = 0,
-  Medium = 1,
-  High = 2,
-  Ultra = 3,
-  Custom = 4
+  Default = 0,
+  Low = 1,
+  Medium = 2,
+  High = 3,
+  Ultra = 4,
+  Custom = 5
 };
 struct QualitySettings {
   bool ssao = true;
@@ -14,6 +15,7 @@ struct QualitySettings {
   bool ssrTemporal = true;
   bool contact = true;
   bool ssgi = false;
+  bool ddgi = false;
   bool dof = false;
   bool motionBlur = false;
   bool fxaa = true;
@@ -32,6 +34,30 @@ struct QualitySettings {
 };
 inline QualitySettings ApplyQualityPreset(QualityLevel level) {
   QualitySettings q;
+  if (level == QualityLevel::Default) {
+    q.ssao = true;
+    q.aoMode = 1;
+    q.ssr = false;
+    q.ssrTemporal = false;
+    q.contact = false;
+    q.ssgi = false;
+    q.ddgi = false;
+    q.dof = false;
+    q.motionBlur = false;
+    q.fxaa = true;
+    q.taa = false;
+    q.fog = true;
+    q.bloom = 0.0f;
+    q.renderScale = 1.0f;
+    q.shadowFilter = 0;
+    q.vsmQuality = 1;
+    q.shadowRange = 0.0f;
+    q.dynRes = false;
+    q.occ = true;
+    q.shadowAuto = false;
+    q.godRays = false;
+    return q;
+  }
   if (level == QualityLevel::Low) {
     q.ssao = true;
     q.aoMode = 1;
@@ -39,6 +65,7 @@ inline QualitySettings ApplyQualityPreset(QualityLevel level) {
     q.ssrTemporal = false;
     q.contact = false;
     q.ssgi = false;
+    q.ddgi = false;
     q.dof = false;
     q.motionBlur = false;
     q.fxaa = true;
@@ -62,6 +89,7 @@ inline QualitySettings ApplyQualityPreset(QualityLevel level) {
     q.ssrTemporal = true;
     q.contact = true;
     q.ssgi = false;
+    q.ddgi = false;
     q.dof = false;
     q.motionBlur = false;
     q.fxaa = true;
@@ -85,6 +113,7 @@ inline QualitySettings ApplyQualityPreset(QualityLevel level) {
     q.ssrTemporal = true;
     q.contact = true;
     q.ssgi = true;
+    q.ddgi = true;
     q.dof = true;
     q.motionBlur = true;
     q.fxaa = true;
@@ -107,6 +136,7 @@ inline QualitySettings ApplyQualityPreset(QualityLevel level) {
   q.ssrTemporal = true;
   q.contact = true;
   q.ssgi = true;
+  q.ddgi = true;
   q.dof = true;
   q.motionBlur = false;
   q.fxaa = true;

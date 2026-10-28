@@ -312,6 +312,7 @@ public:
   bool IsTaaValid() const;
   void SetToneMapping(int mode);
   void SetAutoExposure(bool on);
+  bool AutoExposureEnabled() const { return autoExpOn; }
   void SetRobustExposure(bool on);
   void SetGrading(float contrast, float saturation, float temperature, float tint);
   void SetHeightFog(float falloff, float baseHeight);
