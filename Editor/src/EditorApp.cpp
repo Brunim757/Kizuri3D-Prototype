@@ -7,6 +7,7 @@
 #include "Kizuri/Path.h"
 #include "Kizuri/QualityPreset.h"
 #include "Kizuri/Dpi.h"
+#include "Kizuri/UiText.h"
 #include "Kizuri/HardwareSpec.h"
 #include "Kizuri/Settings.h"
 #include "Kizuri/Logger.h"
@@ -193,12 +194,14 @@ EditorApp::EditorApp()
   viewFogColor[0] = 0.6f;
   viewFogColor[1] = 0.7f;
   viewFogColor[2] = 0.8f;
-  renameBuf[0] = '\0';
+  ClearTextBuffer(renameBuf, sizeof(renameBuf));
+  ClearTextBuffer(hierSearchBuf, sizeof(hierSearchBuf));
+  ClearTextBuffer(consoleFilterBuf, sizeof(consoleFilterBuf));
   showNotifHistory = false;
-  assetRenameBuf[0] = '\0';
+  ClearTextBuffer(assetRenameBuf, sizeof(assetRenameBuf));
   assetRenameActive = false;
   assetRenameIsTex = false;
-  browserSearch[0] = '\0';
+  ClearTextBuffer(browserSearch, sizeof(browserSearch));
   browserFilter = 0;
   browserListMode = true;
   browserShowTree = true;

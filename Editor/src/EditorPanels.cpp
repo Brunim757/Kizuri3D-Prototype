@@ -9,6 +9,7 @@
 #include "Kizuri/GameMaterial.h"
 #include "Kizuri/GameWorld.h"
 #include "Kizuri/Path.h"
+#include "Kizuri/UiText.h"
 #include "FileDialog.h"
 #include "Kizuri/DebugDraw.h"
 #include "Kizuri/Input.h"
@@ -2858,11 +2859,12 @@ void EditorApp::DrawSettings() {
           if (fn.empty()) {
             fn = tg[ti];
           }
-          items += std::string("\0") + fn;
+          AppendComboItem(items, fn);
           if (tg[ti] == viewCookieGuid) {
             cur = static_cast<int>(ti) + 1;
           }
         }
+        FinishComboItems(items);
         if (ImGui::Combo("Cookie Tex", &cur, items.c_str())) {
           viewCookieGuid.clear();
           Kizuri::RHITexture ck = 0;
@@ -3660,8 +3662,9 @@ bool EditorApp::DrawMaterialNodes(MaterialData& mat) {
   for (size_t i = 0; i < mat.graph.nodes.size(); ++i) {
     char nb[32];
     std::snprintf(nb, sizeof(nb), "%d:%s", mat.graph.nodes[i].id, MatNodeName(mat.graph.nodes[i].type));
-    outItems += std::string("\0") + nb;
+    AppendComboItem(outItems, nb);
   }
+  FinishComboItems(outItems);
   int outs[4] = { mat.graph.outAlbedo, mat.graph.outRoughness, mat.graph.outMetallic, mat.graph.outEmissive };
   const char* outLabels[4] = { "Out Albedo", "Out Rough", "Out Metal", "Out Emissive" };
   for (int o = 0; o < 4; ++o) {

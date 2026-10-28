@@ -24,6 +24,7 @@
 #include "Kizuri/QualityPreset.h"
 #include "Kizuri/Dpi.h"
 #include "Kizuri/TaaMath.h"
+#include "Kizuri/UiText.h"
 #include "Kizuri/DeferredRenderer.h"
 #include "Kizuri/RenderGraph.h"
 #include "Kizuri/FramePacer.h"
@@ -8428,6 +8429,27 @@ bool TestDpiLayout() {
   Kizuri::WindowPlacement fallback = Kizuri::FitWindowToWorkArea(10, 20, 0, 0, 1600, 900);
   return fallback.x == 10 && fallback.y == 20 && fallback.width == 1600 && fallback.height == 900;
 }
+bool TestUiText() {
+  char buffer[4] = { 'x', 'y', 'z', 'w' };
+  Kizuri::ClearTextBuffer(buffer, sizeof(buffer));
+  if (buffer[0] != '\0' || buffer[1] != 'y') {
+    return false;
+  }
+  Kizuri::ClearTextBuffer(nullptr, 4);
+  std::string items = "None";
+  Kizuri::AppendComboItem(items, "Alpha");
+  Kizuri::AppendComboItem(items, "Beta");
+  Kizuri::FinishComboItems(items);
+  const char* cursor = items.c_str();
+  const char* expected[3] = { "None", "Alpha", "Beta" };
+  for (int i = 0; i < 3; ++i) {
+    if (std::strcmp(cursor, expected[i]) != 0) {
+      return false;
+    }
+    cursor += std::strlen(cursor) + 1;
+  }
+  return *cursor == '\0';
+}
 bool TestQualityPreset() {
   Kizuri::QualitySettings def = Kizuri::ApplyQualityPreset(Kizuri::QualityLevel::Default);
   if (!def.ssao || def.ssr || def.ssrTemporal || def.contact || def.ssgi || def.ddgi || def.dof || def.motionBlur || !def.fxaa || def.taa || !def.fog || def.bloom != 0.0f || def.renderScale != 1.0f || def.dynRes || !def.occ || def.shadowAuto || def.godRays) {
@@ -13635,6 +13657,7 @@ int main() {
   failures += Check("LightFeatures", TestLightFeatures());
   failures += Check("QualityPreset", TestQualityPreset());
   failures += Check("DpiLayout", TestDpiLayout());
+  failures += Check("UiText", TestUiText());
   failures += Check("QualityToRenderer", TestQualityToRenderer());
   failures += Check("MotionStable", TestMotionStable());
   failures += Check("IblBake", TestIblBake());
