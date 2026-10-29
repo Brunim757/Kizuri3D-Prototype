@@ -56,8 +56,8 @@
 - [x] Toggle Simulate no viewport + passo por frame
 - [x] Poses interpoladas usadas no render sem sujar a cena
 
-## 8. Fora do escopo (v1)
+## 8. Escopo futuro
 
-- [ ] VehicleController (fora do nicho souls-like atual)
-- [ ] Soft bodies
-- [ ] Destruição com fratura (Jolt permite, decisão do jogo)
+- [ ] VehicleController — **em escopo**: fundação na Fase 13, produção na Fase 23
+- [ ] Soft bodies — fora do v1
+- [ ] Destruição com fratura — Jolt permite; decisão do jogo, não da engine

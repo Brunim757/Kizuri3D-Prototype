@@ -1,12 +1,22 @@
 Kizuri Engine — Renderer Roadmap
 
+**Versão:** 2.0 (direção de produção)
+**Data:** Outubro de 2026
+
+O check marca a cobertura declarada do renderer até aqui, não uma aprovação de qualidade. A Fase 11 audita cada item contra as cenas de referência, corrige artefatos e só então considera o recurso pronto para produção.
+
+---
+
 Requisitos e objetivo
 
 - API principal: DirectX 11
-- Requisito mínimo alvo: NVIDIA GTX 1060
+- Piso de compatibilidade: NVIDIA GT 610 (720p, preset baixo)
+- Mínimo de produção: NVIDIA GTX 1060 6GB / AMD RX 580 (1080p/30 com FSR)
+- Recomendado: RTX 3060 / RX 6600 (1080p/60 ou 1440p com FSR)
 - Renderer poderoso sem depender de Ray Tracing
 - Recursos devem possuir níveis de qualidade configuráveis
 - Prioridade: qualidade visual + desempenho + escalabilidade
+- A GT 610 é piso de teste e detecção de custo patológico; não é o alvo de fidelidade visual
 
 ---
 
@@ -426,6 +436,8 @@ Sem Ray Tracing
 
 20. Futuro / Experimental
 
+Implementado (experimental, sujeito à auditoria da Fase 11)
+
 - [x] Advanced temporal reconstruction
 - [x] Advanced volumetric reconstruction
 - [x] Advanced GI sem Ray Tracing
@@ -433,13 +445,29 @@ Sem Ray Tracing
 - [x] Irradiance fields
 - [x] DDGI-like techniques compatíveis com o renderer
 - [x] Advanced virtual texturing
-- [x] GPU scene management
 - [x] GPU occlusion culling
 - [x] Advanced LOD selection
-- [x] Procedural material systems
-- [x] Node-based material editor
-- [x] Shader graph
 - [x] Compute-based post processing
+
+Planejado
+
+- [ ] GPU scene management
+- [ ] Procedural material systems
+- [ ] Node-based material editor
+- [ ] Shader graph
+
+---
+
+21. Cel shading
+
+- [ ] Rampa de iluminação configurável por material
+- [ ] Sombra pintada e controle de bandas
+- [ ] Especular estilizado
+- [ ] Contorno por normal/depth com espessura e cor
+- [ ] Presets de estilo (anime, cartoon, pintado)
+- [ ] Convivência com PBR na mesma cena
+- [ ] Estabilidade com TAA, sombras e pós-processamento
+- [ ] Editor de material cel shading com preview
 
 ---
 
@@ -450,7 +478,7 @@ Fora do objetivo atual
 - [ ] Path tracing
 - [ ] Hardware RT obrigatório
 
-O renderer deve continuar DX11-first e ter a GTX 1060 como requisito mínimo alvo.
+O renderer deve continuar DX11-first e escalar do piso GT 610 até o hardware recomendado. Qualidade visual é medida no hardware de produção; o piso serve para garantir que não há custo patológico.
 
 ---
 

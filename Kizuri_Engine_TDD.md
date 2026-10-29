@@ -1,7 +1,7 @@
 # Kizuri Engine — Documento de Design Técnico (TDD)
 
-**Versão:** 0.1 (rascunho inicial)
-**Data:** Setembro de 2026
+**Versão:** 1.0 (direção de produção)
+**Data:** Outubro de 2026
 **Autor:** Kizuri Studio
 
 ---
@@ -22,34 +22,59 @@
 12. SEMPRE LER ESSE ARQUIVO E O ROADMAP ANTES DE COMECAR UMA FASE
 13. SO INICIAR UMA FASE QUANDO A ANTERIOR ESTIVER 100%
 14. E PARA FAZER OQUE ESTA DESCRITO AQUI NO TDD E NO ROADMAP NAO ALGO SIMPLES EQUIVALENTE FAZER ALGO SIMPLES ESTA ESTRITAMENTE PROIBIDO EM UMA GAME ENGINE VC DEVE FAZER TUDO O MAIS AVANCADO E COMPLETO POSSIVEL NAO ALGO SIMPLES QUE FUCNIONA EU QUERO EXATAMNTE OQUE O TDD E O ROADMAP FALAM SEM SIMPLIFICAR SO PARA ENTREGAR MAIS RAPIDO EU NAO LIGO PARA O TEMPO QUE VAI DEMORAR EU NAO LIGO PARA O TAMANHO QUE VAI FICAR MAS TEM QUE FEITO DE VERDADE SIMPLIFCAR NAO É FAZER BEM FEITO
+15. **Padrão de produção é obrigatório.** Nenhum sistema é considerado pronto por "funcionar no caso feliz". Ele precisa ser correto, testado, perfilado, documentado, editável no Editor e coberto por serialização, Undo/Redo e Inspector quando aplicável.
+16. **Nenhuma feature entra pela metade.** Se um sistema novo é adicionado, a entrega inclui runtime, Editor, serialização, testes, debug visual, orçamento de performance e documentação na mesma fase. Placeholder, stub, "depois eu vejo" e implementação simplificada continuam proibidos.
+17. **Qualidade visual é medida, não opinada.** Cenas de referência, capturas de regressão visual, comparação de estabilidade temporal (flicker, TAA, sombras) e orçamentos de frame time fazem parte do critério de pronto de qualquer trabalho gráfico.
+18. **Não existe "feature solta".** Um efeito, componente ou sistema só conta quando está integrado ao pipeline, ao Editor, ao runtime e aos testes, e quando se comporta de forma consistente em todas as resoluções, DPIs e hardwares suportados.
+19. **O núcleo é genérico.** A engine não pertence a um gênero. Souls-like, jogo urbano, cel shading e qualquer outro estilo são camadas construídas sobre o mesmo núcleo. O primeiro jogo é urbano, mas nenhuma decisão de arquitetura pode fechar a porta para os outros.
+20. **Referência de ambição: RAGE.** GTA V é DX11 e continua sendo referência visual e técnica porque a engine por trás é madura. A Kizuri não copia a RAGE; persegue o mesmo nível de completude, ferramentas, consistência e estabilidade.
+21. **Devlog em primeira pessoa, sem saudação artificial.** A estrutura antiga de "o que foi feito / o que vem" é mantida, mas o texto começa direto em "corrigi", "removi", "melhorei", "arrumei". Sem "e aí, pessoal", sem nomes de arquivos internos e sem lista robotizada de correções linha a linha.
 ---
 
 ## 1. Visão geral
 
-A **Kizuri Engine** é uma game engine 3D desenvolvida do zero em C++, com scripting em C# (incluindo scripting visual por nós compilado via Roslyn), voltada para **Action RPGs souls-like** (referências: Dark Souls, Elden Ring, Sekiro).
+A **Kizuri Engine** é uma game engine 3D completa, desenvolvida do zero em C++ com scripting em C#, para Windows e DirectX 11. O núcleo é **genérico e independente de gênero**: a mesma engine deve conseguir construir um jogo urbano de mundo aberto, um action RPG souls-like, um jogo estilizado em cel shading ou qualquer outro projeto 3D.
 
-A engine é **proprietária e fechada**: não haverá marketplace de plugins, não haverá acesso ao código-fonte C++ por terceiros, e o uso é restrito ao autor e a parceiros autorizados (atualmente, um estúdio parceiro que pretende usar a engine para um projeto próprio, sem envolvimento no desenvolvimento da engine em si).
+O primeiro jogo feito na engine será **urbano**, no espírito de GTA/Just Cause: cidade contínua, ruas, prédios, carros, pedestres, trânsito, missões, ciclo de dia/noite e clima. Souls-like continua suportado como **camada de gameplay e animação**, mas deixa de definir a arquitetura. Cel shading também é um modo de renderização de primeira classe, não um experimento à parte.
+
+A referência de ambição é a **RAGE**. GTA V é DX11 e continua sendo um jogo tecnicamente impressionante porque a engine por trás é madura: sistemas completos, ferramentas de produção, consistência visual, estabilidade e desempenho. A Kizuri não copia a RAGE; persegue o mesmo tipo de completude. A API gráfica não é o limite — a qualidade da implementação é.
 
 ### 1.1 Motivação
 
-Este é um projeto pessoal, motivado por interesse genuíno em engenharia de motores de jogo e pelo gênero souls-like — não uma resposta a demanda de mercado ou de terceiros. Decisões de escopo priorizam profundidade técnica no nicho escolhido em vez de abrangência genérica (evitando repetir o posicionamento "faz tudo" de engines como Unity/Unreal).
+Este é um projeto pessoal, motivado por engenharia de motores de jogo e por construir uma base capaz de sustentar jogos grandes de verdade. O primeiro objetivo concreto é um jogo urbano com cidade, carros e pessoas. O segundo é provar que a mesma base consegue entregar um souls-like completo e jogos estilizados. Não há marketplace, não há plugin de terceiros e não há intenção de competir em escopo com Unity/Unreal; há intenção de fazer os sistemas que existem com qualidade de produção.
 
 ### 1.2 Filosofia central
 
-- **Performance é requisito não-negociável.** A engine deve suportar jogos grandes e visualmente ricos sem engasgos (stutter), travamentos de interface ou quedas de frame perceptíveis.
-- **Padrão arquitetural repetido:** a engine fornece sistemas robustos e configuráveis; o jogo (via C#/scripting visual) decide o comportamento e o tuning. A engine nunca impõe decisões de design de gameplay.
-- **Fechada e pragmática:** sem preocupação de portabilidade multiplataforma, sem necessidade de suportar todo tipo de jogo — o foco no nicho souls-like é o que permite profundidade técnica real.
+- **Qualidade de produção acima de quantidade de features.** Um sistema só conta quando é correto, estável, testado, perfilado, documentado e editável no Editor.
+- **Performance é requisito não-negociável.** A engine deve sustentar cidade, trânsito, personagens e efeitos sem stutter, sem travamento de interface e sem quedas perceptíveis de frame.
+- **Consistência visual e temporal.** Cor, exposição, sombras, TAA, animação e áudio precisam ser estáveis. Tremulação, flicker, rachaduras de luz, popping e ghosting são bugs de produção, não "detalhes".
+- **Padrão arquitetural repetido:** a engine fornece sistemas robustos e configuráveis; o jogo decide comportamento e tuning. A engine nunca impõe design de gameplay.
+- **Núcleo genérico, camadas opcionais.** O que é específico de souls-like, de cidade ou de cel shading vive em camadas e modos, não no coração do runtime.
+- **Ferramenta e teste fazem parte da feature.** Inspector, serialização, Undo/Redo, debug visual, profiler e testes no CI não são polimento posterior.
+- **Escalabilidade real.** A GT 610 é piso de compatibilidade e detector de custo patológico; a fidelidade visual é medida em hardware moderno. Nenhuma degradação automática esconde problema.
+- **Sem placeholder, stub ou "depois eu arrumo".** O que entra precisa funcionar de ponta a ponta.
 
-### 1.3 Nicho e características do gênero-alvo
+### 1.3 Requisitos do primeiro jogo (urbano)
 
-O gênero souls-like impõe requisitos técnicos específicos que a engine deve suportar nativamente ou facilitar fortemente:
+O primeiro jogo impõe requisitos técnicos que a engine precisa suportar de verdade:
 
-- Combate baseado em stamina, timing e "commitment" de animação (não cancelável a meio caminho)
-- Boss fights com IA de padrões e fases
-- Level design interconectado e vertical, com atalhos
-- Sistema de morte/checkpoint com perda/recuperação de recurso
-- Renderização fotorrealista (PBR) com atmosfera dramática (fog, iluminação direcional forte)
-- Câmera em terceira pessoa com lock-on de combate
+- Cidade contínua com streaming de células, LOD, oclusão, HLOD e carregamento assíncrono sem hitch
+- Ruas, calçadas, quarteirões, prédios, interiores e props com ferramentas de level design
+- Carros com física, suspensão, câmera, som, danos e integração com trânsito
+- Pedestres e multidões com animação, navegação, LOD e streaming
+- Trânsito com faixas, cruzamentos, semáforos, spawning e despawning
+- Ciclo de dia/noite, clima, neblina, iluminação e áudio ambiente
+- Missões, save/load, UI de jogo, input e localização
+- Áudio com mixer completo, buses, reverb zones, oclusão e streaming
+- Renderização estável em escala de cidade, com sombras, reflexos, TAA e pós-processamento
+
+### 1.4 Suporte a outros gêneros
+
+A mesma base deve suportar:
+
+- **Souls-like:** combate comprometido, stamina, lock-on, boss fights, level design interconectado, checkpoint e progressão. Nada disso vive no núcleo; é camada de gameplay.
+- **Cel shading:** rampa de iluminação, contornos, especular estilizado, sombras pintadas e pós-processamento próprio, selecionável por material e por câmera.
+- **Outros estilos 3D:** a arquitetura não pode impedir FPS, RPG, survival, plataforma ou projetos experimentais.
 
 ---
 
@@ -58,19 +83,19 @@ O gênero souls-like impõe requisitos técnicos específicos que a engine deve 
 ### 2.1 Estrutura de build
 
 - **1 executável final** por jogo, gerado pelo sistema de Build do editor
-- **Núcleo sempre presente**: sistemas que todo jogo feito na Kizuri sempre usa (`KizuriRender`, `KizuriPhysics`, `KizuriAnimation`, `KizuriAudio`, `KizuriScripting`, `KizuriCore` — ECS, job system, alocadores) são compilados como `.lib` estáticas **internamente, pelo Kizuri Studio**, e linkadas dentro de um único executável "stub" pré-compilado: `KizuriRuntime.exe`. As `.lib` em si **nunca são distribuídas** — são um artefato interno do processo de build da própria engine, sem utilidade para quem não tem um linker C++ (e o SDK não expõe compilação C++ a ninguém, por decisão já registrada na seção sobre o SDK)
+- **Núcleo sempre presente**: sistemas que todo jogo feito na Kizuri sempre usa (`KizuriRender`, `KizuriPhysics`, `KizuriAnimation`, `KizuriAudio`, `KizuriScripting`, `KizuriCore` — ECS, job system, alocadores) são compilados como `.lib` estáticas **internamente, pelo Kizuri Studio**, e linkadas dentro de um único executável base pré-compilado: `KizuriRuntime.exe`. As `.lib` em si **nunca são distribuídas** — são um artefato interno do processo de build da própria engine, sem utilidade para quem não tem um linker C++ (e o SDK não expõe compilação C++ a ninguém, por decisão já registrada na seção sobre o SDK)
 - **Sistemas opcionais, como `.dll` pré-compiladas com carregamento tardio**: sistemas que nem todo jogo precisa — hoje, o caso claro é `KizuriNetworking.dll`; outros módulos opcionais que surgirem no futuro seguem o mesmo padrão
 
-**Correção arquitetural (v0.4):** versões anteriores deste documento cogitaram distribuir `.lib` diretamente ou gerar múltiplos executáveis por combinação de módulos — ambas descartadas. A primeira não faz sentido porque o estúdio que usa a engine nunca tem um toolchain de compilação C++ para consumir uma `.lib`; a segunda gera explosão combinatória conforme módulos opcionais aumentam. A solução final combina o melhor dos dois problemas resolvidos: **um único stub pré-compilado para o núcleo (sempre igual) + DLLs individuais só para o que é genuinamente opcional**.
+**Correção arquitetural (v0.4):** versões anteriores deste documento cogitaram distribuir `.lib` diretamente ou gerar múltiplos executáveis por combinação de módulos — ambas descartadas. A primeira não faz sentido porque o estúdio que usa a engine nunca tem um toolchain de compilação C++ para consumir uma `.lib`; a segunda gera explosão combinatória conforme módulos opcionais aumentam. A solução final combina o melhor dos dois problemas resolvidos: **um único executável base pré-compilado para o núcleo (sempre igual) + DLLs individuais só para o que é genuinamente opcional**.
 
 **O que o SDK distribui de fato:**
-- `KizuriRuntime.exe` — o stub com o núcleo já linkado, pronto para receber assets e C# de qualquer projeto
+- `KizuriRuntime.exe` — o executável base com o núcleo já linkado, pronto para receber assets e C# de qualquer projeto
 - As `.dll` de sistemas opcionais, pré-compiladas
 - Editor, Launcher
 
 **O que o Build faz, dentro do Editor, sem nenhuma compilação C++:**
 1. Copia o `KizuriRuntime.exe` e renomeia para o nome do jogo (ex.: `MeuJogo.exe`)
-2. Empacota os assets e o C# compilado do projeto como dados carregados em runtime pelo stub (não como algo linkado)
+2. Empacota os assets e o C# compilado do projeto como dados carregados em runtime pelo executável base (não como algo linkado)
 3. Analisa quais sistemas opcionais o projeto referencia em C# e copia as `.dll` correspondentes para a mesma pasta
 
 Exemplo prático:
@@ -78,7 +103,7 @@ Exemplo prático:
 SDK distribuído (instalador):
 ├── Editor.exe / Launcher.exe
 └── Runtime/
-    ├── KizuriRuntime.exe       (núcleo já linkado, stub pronto)
+    ├── KizuriRuntime.exe       (núcleo já linkado, executável base pronto)
     └── KizuriNetworking.dll    (pré-compilada, copiada só se usada)
 
 Build de um projeto sem rede:
@@ -122,6 +147,19 @@ MeuJogo/Build/
 - Distribuição via **instalador completo** (Editor + Launcher + runtime .NET necessário), registra associação de arquivo `.kzproj`
 - Conteúdo do SDK: Editor, Launcher, assemblies C# (contrato de API), documentação (gerada dos comentários XML do C#), exemplos
 
+### 2.5 Padrão de entrega e portões de qualidade
+
+Nenhuma fase ou correção é considerada concluída apenas por compilar ou por "funcionar na cena feliz". Todo trabalho passa pelos portões abaixo:
+
+1. **Ponta a ponta:** runtime, Editor, serialização, Undo/Redo, Inspector e persistência quando aplicável.
+2. **Teste automatizado:** unidade e integração no CI; teste visual/imagem quando o resultado for gráfico; teste de performance quando houver custo relevante.
+3. **Sem regressão conhecida:** nenhum bug P0/P1 aberto no sistema tocado; artefatos visuais conhecidos contam como bug.
+4. **Orçamento de performance:** frame time, memória, VRAM e tempo de carregamento medidos contra a cena de referência.
+5. **Ferramenta e debug:** o sistema precisa ser inspecionável e configurável no Editor, com debug visual quando fizer sentido.
+6. **Documentação:** API, comportamento, limitações e decisão de design registrados.
+7. **Revisão de arquivos:** todos os arquivos tocados são relidos e verificados antes do commit.
+8. **Commit único e CI verde:** uma correção verificada por commit; a próxima mudança só começa depois do CI concluir.
+
 ---
 
 ## 3. Stack de bibliotecas de terceiros
@@ -131,6 +169,7 @@ Uma biblioteca definitiva por categoria — sem alternativas em aberto — todas
 | Categoria | Biblioteca | Licença |
 |---|---|---|
 | Física | Jolt Physics | MIT |
+| Navegação | Recast & Detour | zlib |
 | Áudio | miniaudio | MIT / Public Domain |
 | Scripting C# | Roslyn (Microsoft.CodeAnalysis.CSharp) | MIT |
 | Host .NET/CoreCLR | nethost / hostfxr | MIT |
@@ -148,55 +187,85 @@ Uma biblioteca definitiva por categoria — sem alternativas em aberto — todas
 | Compressão de assets | zstd | BSD-3-Clause |
 | Janela/Input | Win32 API nativo | (sistema operacional) |
 
+A engine usa bibliotecas maduras onde elas são a melhor escolha de engenharia — física, navegação, decodificação, compressão — e concentra o desenvolvimento próprio no que é diferencial: renderer, pipeline de assets, animação, áudio mixer, ferramentas, runtime e integração. "Feito do zero" não significa reimplementar o que uma biblioteca consolidada faz melhor.
+
 ---
 
 ## 4. Sistemas centrais (Core Engine)
 
 ### 4.1 Renderização
 
-- **Pipeline: Deferred Rendering** — suporta dezenas/centenas de luzes dinâmicas sem degradar performance, necessário para cenas fotorrealistas com iluminação complexa
-- **Sombras**: Cascaded Shadow Maps (CSM) para luz direcional + shadow maps comuns para luzes pontuais/spot, com PCF/PCSS para suavização
-- **Upscaling**: suporte a FSR (AMD, agnóstico de fabricante — DLSS é exclusivo Nvidia)
-- **Path tracing: fora de escopo** — inviável em tempo real sem Ray Tracing por hardware, que DX11 não suporta nativamente
-- **Materiais**: PBR (albedo, roughness, metallic, normal map)
+A renderização é tratada como sistema de produção, não como coleção de efeitos. O critério é imagem estável, cor consistente, sombras sem artefatos e custo previsível.
+
+- **Pipeline:** Deferred Rendering para opacos + caminho Forward+ para transparentes, partículas e materiais que precisam de iluminação por pixel; render graph explícito com dependências e orçamento por passe
+- **Cor:** workflow linear, sRGB correto em texturas e alvos, exposição manual e automática, tonemap configurável (ACES e alternativas), LUT, contraste, saturação, balanço de branco e consistência entre Editor e runtime
+- **Sombras:** Cascaded Shadow Maps com cascatas estáveis (sem shimmer), bias automático, normal offset, PCF/PCSS, contato, sombras de point/spot, atlas, cache e resolução dinâmica com critério
+- **Iluminação:** direcional, point, spot, area/rect, IBL, reflection probes, DDGI, light layers, cookies, unidades físicas, temperatura de cor e luzes em quantidade sem queda de frame
+- **Pós-processamento:** SSAO/GTAO, SSR, SSGI, TAA com velocity buffer, FXAA, bloom, DOF, motion blur, god rays, film grain, vinheta, heat haze e fog volumétrico — todos com ordem, qualidade e custo documentados
+- **Materiais:** PBR completo e correto (energia, Fresnel, normal maps, ORM, alpha modes, double-sided), clearcoat, sheen, transmission, volume, anisotropia, iridescência, dispersão, layered materials, decals, detail maps, POM, tessellation e virtual textures
+- **Geometria:** meshlets, GPU culling, oclusão, LOD, instancing, static batching e streaming; malhas skinned ficam fora de meshlets, LOD bake, instancing, GPU culling e static batching
+- **Cel shading:** modo de material e de câmera com rampa de iluminação, contornos, especular estilizado, sombras pintadas e controle de intensidade; não substitui o PBR, convive com ele
+- **Debug e profiler:** debug views, visualização de G-buffer, sombras, luzes, probes, overdraw, HZB, tempos de GPU por passe, shader hot reload e captura de frame
+- **Qualidade obrigatória:** sem flicker de luz, sem rachaduras de sombra, sem costura de cascata, sem ghosting de TAA, sem popping de LOD e sem diferença de cor entre Editor e jogo
 
 ### 4.2 Física — Jolt Physics
 
-- Colisão, rigidbody, joints, ragdoll
-- **Padrão arquitetural**: a engine fornece o sistema de ragdoll/joints configurável; o comportamento final (rigidez, o que quebra, como reage) é decisão do jogo, não da engine
-- Destruição de cenário: possível via Jolt, mas configuração/uso é responsabilidade do jogo
+- **Backend:** Jolt Physics com adaptador de Job System para o enkiTS, passo fixo, substepping e interpolação de render
+- **Corpos e colisores:** rigidbody estático/dinâmico/cinemático, box, sphere, capsule, mesh, heightfield e compound
+- **Materiais e resposta:** fricção, restituição, massa, inércia, damping, gravidade e layers de colisão
+- **Joints e ragdoll:** point, hinge, cone, slider, fixed, six-DOF, ragdoll configurável e blend com animação
+- **Character controller:** rampas, escadas, plataformas móveis, crouch, push, colisão contínua e resposta estável
+- **Veículos:** suspensão, pneus, motor, câmbio, direção, freio, drift, dano e integração com trânsito — como sistema da engine, não como script improvisado
+- **Queries:** raycast, shapecast, overlap, filtros por layer e detecção de contato
+- **Qualidade obrigatória:** sem tunneling em alta velocidade, sem jitter de repouso, sem ragdoll explodindo, sem plataforma atravessando o chão e com debug visual completo
 
 ### 4.3 Áudio
 
-- Base: miniaudio (device I/O + decodificação)
-- Camada de áudio 3D posicional própria, construída sobre o miniaudio
+- **Base:** miniaudio para device, decodificação e streaming
+- **Mixer:** grafo de buses hierárquico (Master → Música, SFX, Voz, Ambiente, UI), sends/returns, inserts, volume, mute, solo, snapshots e ducking com sidechain
+- **DSP:** EQ, compressor, limiter, reverb, delay, filtros, distortion e medidores por bus
+- **Espacialização:** atenuação por distância, panning, Doppler, oclusão, reverb zones, ambiência e emitters 3D
+- **Streaming:** clipes longos com streaming, voice management, prioridade e limite de vozes
+- **Editor:** Audio Mixer completo, roteamento visual, curvas, preview, salvamento como asset e Inspector de AudioSource
+- **Qualidade obrigatória:** sem clique, sem estalo, sem corte abrupto, sem vazamento entre buses, com latência e custo medidos
 
 ### 4.4 Animação
 
-- Sistema de animação "estado da arte": blending de múltiplas camadas (locomotion + upper body + aim)
-- **IK completo**: pés ajustados ao terreno, mãos em objetos, look-at de cabeça/tronco
-- Root motion preciso (essencial para golpes, dashes, animações de combate com "commitment")
-- Editor de state machine / blend tree no Editor
+- **Núcleo:** esqueleto, skinning por GPU, importação glTF, amostragem de clipes e conversão de CUBICSPLINE para linear a 60 Hz no import
+- **Runtime:** state machine, blend trees, camadas, máscaras, additive, sync groups, eventos e root motion
+- **IK:** pés no terreno, mãos em objetos, look-at de cabeça/tronco e ajuste de coluna
+- **Retargeting:** rig humanoide padrão, mapeamento de ossos e reuso de animação entre personagens
+- **Integração:** hitboxes sincronizadas no mesmo passo da animação, ragdoll blend e animação de multidão
+- **Editor:** state machine, blend tree, timeline, preview, debugger de esqueleto/pesos e Inspector de Animator
+- **Qualidade obrigatória:** sem popping entre clipes, sem skinning quebrado, sem hitbox atrasada e com custo previsível em muitos personagens
 
 ### 4.5 IA e Pathfinding
 
-- NavMesh dinâmico (recalcula com obstáculos móveis)
-- Hierarchical pathfinding (performance em mundos grandes)
-- Comportamento de squad/group avoidance (múltiplos inimigos não se atropelam)
+- **NavMesh:** Recast & Detour, com geração por tiles e recálculo apenas da região afetada
+- **Pathfinding:** hierárquico e assíncrono, adequado a cidade grande e a interiores
+- **Agentes:** behavior trees/utility AI, percepção, memória, group avoidance, formation e squad
+- **Multidões e trânsito:** agentes em massa com LOD de IA, spawning/despawning, faixas, cruzamentos e semáforos
+- **Depuração:** visualização de NavMesh, caminhos, agentes, percepção e estado de comportamento no Viewport
 
 ### 4.6 Rede
 
-- Modelo: **P2P com host migration** (mesmo modelo usado por Dark Souls/Elden Ring), sem necessidade de servidor dedicado
-- Biblioteca: GameNetworkingSockets
+- Recurso **opcional**, fora do caminho crítico do primeiro jogo single-player
+- Modelo P2P com host migration para co-op, usando GameNetworkingSockets
+- Client-side prediction com reconciliação/rollback para jogos que precisarem
+- A arquitetura do runtime não pode impedir rede, mas o jogo urbano inicial não depende dela
 
 ### 4.7 VFX
 
-- Sistema de partículas **GPU-based**, suportando milhares de partículas sem impacto perceptível de performance
+- Sistema de partículas **GPU-based**, com emissores, curvas, colisão, trails, decals e sorting
+- Milhares de partículas sem impacto perceptível de performance
+- Editor de VFX com preview no Viewport e curvas editáveis
 
 ### 4.8 Câmera
 
-- Sistema de câmera terceira pessoa **built-in**: raycast/colisão roda em C++ (performance), exposto como componente configurável via C# (modelo similar à Cinemachine da Unity) — todo jogo ganha uma câmera funcional por padrão, mas pode sobrescrever
-- **Lock-on de combate NÃO é responsabilidade nativa da engine** — fica a cargo do jogo, por ser uma decisão de design de combate
+- **Câmeras built-in:** terceira pessoa, primeira pessoa, veículo, livre e cinemática
+- Colisão por raycast/shapecast em C++, configurável via componente
+- **Lock-on** é camada opcional de gameplay, não responsabilidade fixa do núcleo
+- Suporte a shake, blends, prioridade, post-process por câmera e sequências cinemáticas
 
 ### 4.9 Sistema de Prefabs
 
@@ -206,19 +275,21 @@ Uma biblioteca definitiva por categoria — sem alternativas em aberto — todas
 - **Apply/Revert**: uma instância pode empurrar sua mudança de volta ao Prefab original (propagando a todas as outras instâncias) ou descartar o override (voltando ao valor do Prefab)
 - **Prefab Variants**: um Prefab pode herdar de outro, sobrescrevendo apenas parte de suas propriedades (ex.: variações de um mesmo tipo de inimigo)
 - **Modo de edição isolado**: editar um Prefab abre um contexto próprio, fora de qualquer cena, evitando alterar sem querer apenas uma instância específica
-- Instanciável tanto via API C# quanto por nó de Scripting Visual — é o mecanismo central para popular um nível souls-like com inimigos e itens repetidos sem duplicação manual de trabalho
+- Instanciável tanto via API C# quanto por nó de Scripting Visual — é o mecanismo central para popular uma cidade com carros, pedestres, props e missões sem duplicação manual de trabalho
 
 ### 4.10 Save System (do jogo)
 
 - Sistema de **serialização genérica baseada em reflection** (qualquer componente/entidade pode ser serializado automaticamente) — construída cedo, já na fundação do Editor (Roadmap, Fase 3), e reaproveitada por quatro consumidores diferentes: "Salvar Cena" do Editor, snapshot de Play-in-Editor, Sistema de Prefabs, e o Save System do jogo descrito aqui
 - Gerenciador de save slots (múltiplos saves, autosave), exposto ao jogo via C#
-- O conceito de "checkpoint"/bonfire (o que é salvo, quando) é decisão do jogo, construída sobre a serialização fornecida pela engine
+- O conceito de "checkpoint"/ponto de salvamento (o que é salvo, quando) é decisão do jogo, construída sobre a serialização fornecida pela engine
 - **Não deve ser confundido com "Salvar Cena" do Editor** — são consumidores diferentes da mesma capacidade de serialização: um persiste o estado de autoria (a cena que o dev está montando), o outro persiste o progresso do jogador em runtime
 
 ### 4.11 Input
 
-- Rebind completo de teclas/botões
+- Rebind completo de teclas/botões, com perfis por dispositivo
 - Suporte a múltiplos dispositivos de controle simultâneos
+- Mapeamento contextual: personagem a pé, veículo, câmera, UI e editor
+- Input crítico via polling de baixo nível, fora do loop de mensagens do Win32
 
 ### 4.12 Threading e memória — requisito não-funcional crítico
 
@@ -235,6 +306,30 @@ Uma biblioteca definitiva por categoria — sem alternativas em aberto — todas
 
 - Não é responsabilidade nativa da engine (decisão do jogo/estúdio que a utiliza)
 - Arquitetura não deve *impedir* modding futuro, mas não é requisito ativo
+
+### 4.15 Streaming e mundo aberto
+
+- **Cidade contínua:** divisão em células, carregamento/descarregamento assíncrono e transição sem hitch
+- **Geometria:** HLOD, LOD por distância, oclusão, meshlets/GPU culling e instancing em escala
+- **Texturas e assets:** streaming por distância, orçamento de VRAM, priorização e cancelamento de requisições
+- **Áudio:** zonas e emitters carregados/descarregados junto com as células
+- **Precisão:** Origin Rebasing para manter coordenadas estáveis longe da origem
+- **Memória:** orçamento por célula, pool de recursos, despejo previsível e telemetria
+- **Qualidade obrigatória:** sem popping visível, sem travamento na thread de render, sem vazamento de memória e sem costura entre células
+
+### 4.16 Ciclo de dia/noite e clima
+
+- Sol/lua, céu procedural e HDR sky, fase da lua, estrelas e iluminação coerente com a hora
+- Fog, névoa, nuvens, chuva, neve, vento e superfícies molhadas
+- Transições suaves, presets por região e integração com áudio ambiente
+- Editor de time of day com preview e keyframes
+
+### 4.17 Cel shading
+
+- Modo de material com rampa de iluminação, sombra pintada, especular estilizado e emissivo controlado
+- Contornos por normal/depth, com espessura configurável e estabilidade temporal
+- Compatibilidade com sombras, TAA e pós-processamento
+- Presets de estilo (anime, cartoon, pintado) e possibilidade de misturar PBR e cel shading na mesma cena
 
 ---
 
@@ -255,9 +350,16 @@ Uma biblioteca definitiva por categoria — sem alternativas em aberto — todas
   - **Editor de Scripting Visual** (nós)
   - **Editor de Animação** (state machine, blend tree, preview de IK)
   - **Editor de VFX/Partículas**
-  - **Profiler visual** (CPU/GPU/memória, frame time por sistema)
+  - **Audio Mixer** (buses, sends, inserts, DSP, snapshots, medição)
+  - **Editor de Mundo/Streaming** (células, HLOD, LOD, orçamento de memória, preview de carregamento)
+  - **Editor de Trânsito e Multidões** (faixas, cruzamentos, semáforos, spawning, densidade)
+  - **Editor de Veículos** (suspensão, motor, câmbio, pneus, dano, câmera)
+  - **Editor de Tempo/Clima** (hora, sol, nuvens, chuva, neve, vento)
+  - **Profiler visual** (CPU/GPU/memória, frame time por sistema, tempos por passe)
+  - **Render Graph Debugger** (passes, dependências, recursos, overdraw, HZB)
   - **Debugger de física** (colliders, ragdoll, raycasts)
   - **Debugger de animação** (esqueleto, IK, blend weights)
+  - **Debugger de áudio** (vozes, buses, oclusão, latência)
   - **Painel de Documentação** (dockable, navegável dentro do editor — ver seção 5.6)
 
 ### 5.2 Atalhos de teclado
@@ -308,7 +410,7 @@ Inspirado no modelo do Godot:
 ### 5.7 Sistema de Build
 
 - Configuração de build dentro do Project Settings
-- Botão "Build" gera o executável final em 1 clique, com linkagem seletiva das `.lib` conforme uso real do projeto (ver seção 2.1)
+- Botão "Build" gera o executável final em 1 clique: copia o executável base já linkado, empacota assets e C# e inclui apenas as `.dll` opcionais realmente usadas pelo projeto (ver seção 2.1)
 
 ### 5.8 UI (HUD e menus do jogo)
 
@@ -347,7 +449,7 @@ MeuJogo/
 
 ---
 
-## 7. Requisitos de hardware (estimativa inicial)
+## 7. Requisitos de hardware
 
 **Metodologia**: como não é viável testar fisicamente em todo hardware existente, a estimativa segue a prática padrão da indústria:
 
@@ -359,15 +461,17 @@ MeuJogo/
 
 **Esta tabela é uma meta de design inicial**, a ser validada quando existir conteúdo de jogo real (vertical slice) para benchmark:
 
-| | Mínimo | Recomendado |
-|---|---|---|
-| GPU | GTX 1060 6GB / RX 580 (com FSR ativo) | RTX 3060 / RX 6600 |
-| CPU | 4 núcleos / 8 threads (ex.: i5-8400) | 6 núcleos / 12 threads (ex.: Ryzen 5 5600) |
-| RAM | 8 GB | 16 GB |
-| Armazenamento | SSD (essencial para streaming sem stutter) | SSD NVMe |
-| Alvo de resolução/FPS | 1080p / 30fps com FSR | 1080p / 60fps ou 1440p com FSR |
+| | Piso de compatibilidade | Mínimo de produção | Recomendado |
+|---|---|---|---|
+| GPU | GT 610 / integrada antiga (720p, preset baixo) | GTX 1060 6GB / RX 580 (1080p/30 com FSR) | RTX 3060 / RX 6600 (1080p/60 ou 1440p com FSR) |
+| CPU | Core 2 Duo / Phenom II (piso de teste) | 4 núcleos / 8 threads (ex.: i5-8400) | 6 núcleos / 12 threads (ex.: Ryzen 5 5600) |
+| RAM | 4 GB (piso de teste) | 8 GB | 16 GB |
+| Armazenamento | HD (piso de teste) | SSD (essencial para streaming sem stutter) | SSD NVMe |
+| Alvo de resolução/FPS | 720p / 30fps, preset baixo | 1080p / 30fps com FSR | 1080p / 60fps ou 1440p com FSR |
 
-O requisito mínimo de 4 núcleos reais é arquitetural, não arbitrário: é o piso necessário para separar efetivamente a thread de UI do trabalho pesado via job system (seção 4.11).
+O **piso de compatibilidade** existe para provar que a engine não tem custo patológico e para o autor validar no E5700/GT 610. Ele **não é o alvo visual**: fidelidade, sombras, pós-processamento e densidade de cidade são medidas no hardware de produção e no recomendado. A GT 610 não pode ditar o teto gráfico da engine.
+
+O requisito mínimo de 4 núcleos reais é arquitetural, não arbitrário: é o piso necessário para separar efetivamente a thread de UI do trabalho pesado via job system (seção 4.12).
 
 ---
 
@@ -395,8 +499,8 @@ Esta seção documenta armadilhas de baixo nível identificadas por revisão té
 - **Bloqueio de frame por upload síncrono à GPU**: enviar texturas/meshes carregadas em background via `UpdateSubresource`/`Map`/`Unmap` pode travar a thread principal na hora do envio. **Mitigação**: uploads de GPU passam por uma fila assíncrona com staging buffers, distribuídos ao longo de vários frames em vez de um upload bloqueante único.
 - **Stall de pipeline por readback de GPU**: ler um pixel da GPU (ex.: seleção de entidade por clique no Viewport) força a CPU a esperar toda a renderização terminar. **Mitigação**: readback usa buffers com N frames de atraso (a CPU lê o resultado do frame anterior, não do atual), evitando sincronização bloqueante.
 - **Redundância de estado na RHI**: a camada fina pode reenviar Render States já ativos na GPU. **Mitigação**: a RHI mantém um cache do último estado enviado e descarta chamadas redundantes antes de repassar ao driver.
-- **Gargalo de Draw Calls no Deferred Rendering**: cenários souls-like densos podem estourar o limite de draw calls do DX11 na CPU. **Mitigação**: instancing agressivo para geometria repetida (vegetação, props) e culling de oclusão obrigatório desde a Fase 5 do Roadmap, não como otimização posterior.
-- **Falta de VRAM sem Texture Streaming**: mundos interconectados sem telas de carregamento estouram os 6GB da GTX 1060 (requisito mínimo). **Mitigação**: sistema de streaming de textura por distância (mip reduzido para objetos distantes), integrado ao pipeline de assets da Fase 4.
+- **Gargalo de Draw Calls no Deferred Rendering**: cenas urbanas densas podem estourar o limite de draw calls do DX11 na CPU. **Mitigação**: instancing agressivo para geometria repetida (prédios, props, vegetação), culling de oclusão, meshlets/GPU culling e static batching desde o renderer, não como otimização posterior.
+- **Falta de VRAM sem Texture Streaming**: cidade contínua sem streaming estoura a VRAM do hardware mínimo. **Mitigação**: streaming de textura por distância e por célula, orçamento de VRAM, priorização e despejo previsível, integrado ao pipeline de assets e ao mundo.
 
 ### 8.4 Física (Jolt), Animação e Gameplay
 
@@ -407,7 +511,7 @@ Esta seção documenta armadilhas de baixo nível identificadas por revisão té
 
 ### 8.5 Engenharia do Editor
 
-- **Corrupção de estado no Play-in-Editor**: rodar o jogo no mesmo espaço de memória do editor pode destruir a cena original ao editar scripts. **Mitigação**: o estado da cena é serializado (via o mesmo sistema de save da seção 4.9) antes de entrar em Play Mode, e restaurado automaticamente ao sair — não é um reload do arquivo do zero, é snapshot em memória.
+- **Corrupção de estado no Play-in-Editor**: rodar o jogo no mesmo espaço de memória do editor pode destruir a cena original ao editar scripts. **Mitigação**: o estado da cena é serializado (via o mesmo sistema de save da seção 4.10) antes de entrar em Play Mode, e restaurado automaticamente ao sair — não é um reload do arquivo do zero, é snapshot em memória.
 - **Condição de corrida no Inspector (Immediate Mode)**: editar um valor no ImGui enquanto o Job System altera o mesmo dado em background gera conflito de escrita. **Mitigação**: edições feitas pelo Inspector são enfileiradas e aplicadas no início do frame seguinte, no mesmo ponto de sincronização que o restante do ECS usa — nunca escrita direta e imediata durante o frame.
 - **Assets binários (FlatBuffers) incompatíveis com merge no Git**: cenas/terrenos binários impedem merge de branches. **Mitigação**: não é um problema ativo no momento (fluxo de trabalho é de um único desenvolvedor), mas registrado como risco latente — se o projeto ganhar mais de um colaborador direto no futuro, será necessário um formato intermediário textual (ex.: JSON) para cenas, convertido para binário só no build.
 - **Estouro de RAM no Undo/Redo**: salvar cópias completas de componentes a cada alteração de mouse (pintura de vegetação, sculpting) esgota memória rápido. **Mitigação**: histórico de undo usa diffs incrementais (delta de mudança), não snapshots completos, com compactação periódica do histórico antigo.
@@ -415,9 +519,30 @@ Esta seção documenta armadilhas de baixo nível identificadas por revisão té
 
 ### 8.6 IA, Rede e Sistemas Auxiliares
 
-- **Gargalo de CPU em NavMesh 3D vertical**: recalcular NavMesh dinamicamente em áreas com múltiplos andares sobrepostos (comum em souls-like) derruba o frame rate. **Mitigação**: recalculo de NavMesh é particionado em regiões (tiles) e só a região afetada por uma mudança (ex.: portão abrindo) é recalculada, nunca o mundo inteiro.
-- **Divergência de estado em rede P2P**: sem previsão de cliente e rebobinamento, perda de pacotes causa descompasso entre o que o jogador vê e o que o host aplica. **Mitigação**: client-side prediction com reconciliação (rollback) no sistema de rede, a ser detalhado tecnicamente na Fase 15 do Roadmap antes da implementação.
-- **Latência de input pela fila de mensagens do Win32**: processar esquiva dentro do loop padrão `GetMessage` expõe o input a oscilações do SO/renderização. **Mitigação**: leitura de input crítico (esquiva, ataque) via polling de estado de baixo nível (ex.: `GetAsyncKeyState`/Raw Input) fora do loop de mensagens do Win32, não dependente da fila de eventos da janela.
+- **Gargalo de CPU em NavMesh 3D vertical**: recalcular NavMesh dinamicamente em áreas com múltiplos andares sobrepostos (comum em cidade e em souls-like) derruba o frame rate. **Mitigação**: recálculo de NavMesh é particionado em tiles e só a região afetada por uma mudança (ex.: portão abrindo, carro bloqueando) é recalculada, nunca o mundo inteiro.
+- **Divergência de estado em rede P2P**: sem previsão de cliente e rebobinamento, perda de pacotes causa descompasso entre o que o jogador vê e o que o host aplica. **Mitigação**: client-side prediction com reconciliação (rollback) no sistema de rede, a ser detalhado tecnicamente na fase de rede do Roadmap antes da implementação.
+- **Latência de input pela fila de mensagens do Win32**: processar esquiva, ataque ou direção de veículo dentro do loop padrão `GetMessage` expõe o input a oscilações do SO/renderização. **Mitigação**: leitura de input crítico (esquiva, ataque, aceleração, freio) via polling de estado de baixo nível (ex.: `GetAsyncKeyState`/Raw Input) fora do loop de mensagens do Win32, não dependente da fila de eventos da janela.
+
+### 8.7 Streaming de mundo aberto
+
+- **Hitch na troca de célula**: carregar/descarregar geometria, texturas e áudio no meio do frame trava a experiência. **Mitigação**: carregamento assíncrono com orçamento por frame, fila de prioridade, upload de GPU distribuído e transição por HLOD antes da célula detalhada.
+- **Popping visível de LOD/HLOD**: troca de malha ou textura perceptível. **Mitigação**: transições por distância com histerese, dithering/fade e calibração por cena de referência.
+- **Vazamento de memória/VRAM**: células antigas mantidas por referência. **Mitigação**: ownership explícito, pools, contagem de referências, despejo auditável e telemetria por célula.
+- **Costura entre células**: buracos, z-fighting ou iluminação diferente na divisa. **Mitigação**: células com borda compartilhada, normais/tangentes consistentes, probes e lightmaps contínuos, teste visual de costura.
+
+### 8.8 Veículos e trânsito
+
+- **Tunneling em alta velocidade**: carro atravessa parede ou outro carro. **Mitigação**: CCD, substepping, colisores compostos e limites de velocidade testados.
+- **Instabilidade de suspensão**: jitter, capotamento artificial ou resposta elástica. **Mitigação**: modelo de suspensão calibrado, damping, passo fixo e testes de frenagem/curva/impacto.
+- **Custo de multidões e trânsito**: milhares de agentes derrubam CPU. **Mitigação**: LOD de IA, atualização por frequência, pooling, simulação em background e orçamento por célula.
+- **Sincronização entre física e animação do veículo**: rodas, suspensão e corpo fora de fase. **Mitigação**: atualização no mesmo passo de física e interpolação consistente no render.
+
+### 8.9 Consistência visual e temporal
+
+- **Cor inconsistente entre Editor e jogo**: sRGB/linear, exposição ou tonemap diferentes. **Mitigação**: um único workflow de cor, calibração por cena de referência e teste de imagem.
+- **Flicker de luz/sombra**: bias, precisão, cascatas ou jitter. **Mitigação**: bias automático, normal offset, cascatas estabilizadas, cache de sombra e teste temporal com câmera parada e em movimento.
+- **Ghosting/smearing de TAA**: falta de velocity por objeto ou histórico inválido. **Mitigação**: velocity buffer correto, rejeição de histórico por profundidade/normal e validação em objetos animados.
+- **Shader permutations fora de controle**: tempo de compilação e variantes inconsistentes. **Mitigação**: chaves explícitas, cache de shaders, compilação assíncrona e inventário de variantes.
 
 ---
 
@@ -433,12 +558,18 @@ Itens conscientemente excluídos do escopo inicial:
 - Localização multi-idioma (apenas preparação arquitetural)
 - Modding com suporte nativo da engine
 - Hot-reload de código C++
+- Paridade feature-by-feature com RAGE, Unreal ou Unity
+- Renderer alternativo (DX12/Vulkan) antes do backend DX11 estar maduro
+
+Streaming de mundo aberto **não** está fora de escopo: ele é requisito do primeiro jogo urbano e será construído como sistema da engine.
 
 ---
 
-## 10. Próximos passos sugeridos
+## 10. Próximos passos
 
-1. Validar a arquitetura da RHI e do job system com um protótipo mínimo (renderer + física + 1 luz dinâmica)
-2. Definir prioridade de implementação dos módulos do Core Engine
-3. Construir a primeira "vertical slice" para validar os requisitos de hardware estimados na seção 7
-4. Especificar em detalhe o formato do arquivo `.kzproj` e do pipeline de assets (glTF → formato interno)
+1. Auditar a baseline atual: componente Material, iluminação (flicker e rachaduras), viewport cinza no resize e tremulação residual do TAA.
+2. Criar cenas de referência e testes de regressão visual/performance para renderer, áudio, física e animação.
+3. Fechar a Fase 10 (animação) com state machine, camadas, IK, root motion, retargeting e eventos.
+4. Executar a Fase 10.5 de estabilização crítica.
+5. Iniciar a Fase 11 de renderização de produção.
+6. Manter o padrão de um commit por correção verificada, CI verde e portões de qualidade da seção 2.5.

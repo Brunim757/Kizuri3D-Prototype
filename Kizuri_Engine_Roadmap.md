@@ -1,7 +1,19 @@
 # Kizuri Engine — Roadmap de Desenvolvimento
 
+**Versão:** 2.0 (direção de produção)
+**Data:** Outubro de 2026
 **Autor:** Kizuri Studio
 **Repositório:** `KizuriEngine` (público)
+
+---
+
+## Direção atual
+
+A engine é **genérica**, não pertence a um gênero. O primeiro jogo é **urbano**, no espírito de GTA/Just Cause: cidade contínua, carros, pedestres, trânsito, missões, clima e ciclo de dia/noite. Souls-like continua suportado como camada de gameplay, e cel shading é um modo de renderização de primeira classe.
+
+O padrão de entrega muda: cada sistema precisa ser **de produção**, não apenas presente. Isso significa correção, testes, performance, ferramentas, documentação e acabamento visual. A referência de ambição é a RAGE: GTA V é DX11 e continua impressionante porque a engine por trás é madura.
+
+A numeração 0–10 é histórica. A partir da Fase 10.5 o roadmap foi reorganizado para refletir a nova direção, sem apagar o que já foi concluído.
 
 ---
 
@@ -10,6 +22,19 @@
 As fases estão organizadas por **dependência técnica**, não por data — cada fase depende do que foi construído na anterior. Não há estimativa de tempo fixa (projeto solo, ritmo variável), mas a ordem deve ser respeitada: pular fases gera retrabalho.
 
 Cada fase lista: **objetivo**, **entregáveis** e **critério de "pronto"**.
+
+### Portões de qualidade (obrigatórios em toda fase)
+
+1. **Ponta a ponta:** runtime, Editor, serialização, Undo/Redo, Inspector e persistência quando aplicável.
+2. **Teste no CI:** unidade, integração e, quando gráfico, regressão visual; quando caro, orçamento de performance.
+3. **Sem regressão conhecida:** nenhum bug P0/P1 no sistema tocado; artefato visual conhecido conta como bug.
+4. **Performance medida:** frame time, memória, VRAM e carregamento contra a cena de referência.
+5. **Ferramenta e debug:** configurável e inspecionável no Editor, com visualização quando fizer sentido.
+6. **Documentação:** API, comportamento, limites e decisão de design registrados.
+7. **Revisão de arquivos:** todos os arquivos tocados são relidos e verificados antes do commit.
+8. **Um commit por correção verificada:** CI verde antes da próxima mudança.
+9. **Sem placeholder, stub ou implementação simplificada.**
+10. **Devlog em primeira pessoa:** estrutura antiga de "feito / próximo", começando direto em "corrigi", "removi", "melhorei", sem saudação artificial e sem nomes de arquivos internos.
 
 ### Princípio: o Editor nasce cedo e cresce junto com cada sistema
 
@@ -33,13 +58,14 @@ A Fase 3 foi deliberadamente construída como uma fundação robusta (não um MV
 | DirectXTex | Fase 4 | Requer wiring específico com DirectXMath (CONFIG) |
 | FlatBuffers | Fase 4 | Formato de serialização de assets |
 | zstd | Fase 4 (bootstrap já validado na Fase 0) | Compressão de pacote de assets |
-| Jolt Physics | Fase 6 | Sistema de física |
-| miniaudio | Fase 7 | Sistema de áudio |
-| nethost / hostfxr | Fase 11 | Tooling .NET para hospedar o CoreCLR |
-| Roslyn (Microsoft.CodeAnalysis.CSharp) | Fase 11 | Compilador C# usado pelo scripting |
-| GameNetworkingSockets | Fase 17 | Rede P2P; toolchain pesado (OpenSSL/libsodium), isolado até esta fase |
-| FreeType | Fase 19 ou 20 | Renderização de texto (UI de jogo e/ou editor) |
-| Fork Awesome + IconFontCppHeaders | Fase 22 | Ícones do editor |
+| Jolt Physics | Fase 6 | Sistema de física; aprofundado na Fase 13 |
+| miniaudio | Fase 7 | Sistema de áudio; aprofundado na Fase 12 |
+| nethost / hostfxr | Fase 14 | Tooling .NET para hospedar o CoreCLR |
+| Roslyn (Microsoft.CodeAnalysis.CSharp) | Fase 14 | Compilador C# usado pelo scripting |
+| Recast & Detour | Fase 18 | NavMesh e pathfinding |
+| FreeType | Fase 21 | Renderização de texto (UI de jogo e/ou editor) |
+| GameNetworkingSockets | Fase 27 | Rede P2P opcional; toolchain pesado (OpenSSL/libsodium), isolado até esta fase |
+| Fork Awesome + IconFontCppHeaders | Fase 28 | Ícones do editor |
 
 **Nota sobre a Fase 0**: libs single-header/simples de baixo risco foram todas *bootstrapadas* já na Fase 0 (CMake + chamada real de API via `KizuriHello`). `DirectXTex`, `GameNetworkingSockets`, `Roslyn`/`nethost` e os ícones seguem fora da Fase 0 pelos motivos já descritos na tabela.
 
@@ -51,7 +77,7 @@ A Fase 3 foi deliberadamente construída como uma fundação robusta (não um MV
 |---|---|---|
 | 0 — Repositório | ✅ concluída | CI no GitHub Actions entrega artefato de build a cada push |
 | 1 — Núcleo (C++) | ✅ concluída | Alocadores, Job System (enkiTS), janela/input, Origin Rebasing, RHI + backend DX11 |
-| 2 — Renderer básico | ✅ concluída | Deferred + PBR + câmera livre + luz direcional. O renderer foi **muito além** desta fase: o `RendererList.md` está praticamente 100% (só restam N/A de DX11 e RT fora de escopo) |
+| 2 — Renderer básico | ✅ concluída | Deferred + PBR + câmera livre + luz direcional. A lista de features do `RendererList.md` é ampla, mas a **qualidade de produção** ainda não estava no nível exigido; a Fase 11 revisa e corrige o pipeline inteiro (cor, sombras, TAA, materiais e pós) |
 | 3 — Editor Shell | ✅ concluída | Viewport, Hierarquia, Inspector, Console, Asset Browser, Settings; serialização `.kzscene`, autosave, Undo/Redo, seleção múltipla, notificações, menus de contexto, ImGuizmo. **UI/UX no estilo Roblox Studio**: tema próprio (paleta + escala compacta + Segoe UI), dock space real com layout Explorer/Properties/Viewport/Output, barra de ferramentas, Hierarquia como árvore com busca, Inspector como property grid, Output com filtro. Layout salvo em `%LOCALAPPDATA%/Kizuri/EditorLayout.ini` |
 | 4 — Pipeline de Assets | ✅ concluída | Import glTF, texturas, codecs internos, Asset Browser, dependências entre assets, upload assíncrono |
 | 5 — Iluminação/sombras | ✅ concluída | CSM, PCF/PCSS, múltiplas luzes, clustered/Forward+, céu procedural, instancing, culling, FSR, Inspector de Light |
@@ -59,9 +85,12 @@ A Fase 3 foi deliberadamente construída como uma fundação robusta (não um MV
 | 7 — Áudio + Mixer | ✅ concluída | Núcleo sobre miniaudio (device + decoder), mixer próprio com hierarquia de buses (Master/Música/SFX/Voz/Ambiente), volume/mute/solo, ducking entre buses, reverb (Freeverb) por bus, camada 3D posicional própria (atenuação linear/inverse/exponential + pan direcional), componente `AudioSource` no ECS (Undo/Redo + EditQueue + serialização + Inspector), painel "Audio Mixer" no Editor, mixer salvo como asset `.kzmixer`. 9 testes no CI |
 | 8 — Runtime de Jogo | ✅ concluída | **A espinha**: `Engine/Game` com `GameLoop` (passo fixo determinístico + sistemas ordenados + estatísticas), `GameWorld` (cena + assets + renderer + física + áudio + câmera), `GameApp` (janela + RHI + loop) e o executável de jogo `KizuriRuntime.exe`. Material e luzes agora têm **uma implementação só** (Editor e runtime). 4 testes no CI |
 | 9 — ECS e Gameplay Framework | ✅ concluída | `ComponentRegistry` é a fonte única de presença/defaults/reset/serialização/Undo/metadados de Inspector dos 11 componentes; Add/Remove e Save/Load são genéricos. O storage ECS usa colunas sparse-set, queries e scheduler por dependências; `SceneEcsBridge` preserva os IDs e o runtime executa física/áudio sobre ECS. O Play-in-Editor usa snapshot por raiz, cena isolada, `simEcs` e Inspector somente leitura. Validação visual concluída no E5700/GT 610. A migração 100% ECS (9.5) permanece opcional e não aprovada |
-| 10 — Animação | 🟡 **em andamento** | `Engine/Animation` ainda é stub. O importador reconhece glTF com skin, mas entrega a malha em bind pose; o runtime ainda não tem esqueleto, skinning, blending em camadas, IK de pés/mãos, look-at, root motion, retargeting nem state machine no Editor |
-| 11 — Scripting C# | ⏳ pendente | `Engine/Scripting` ainda é stub |
-| 12–25 | ⏳ pendente | Prefabs, Scripting Visual, Câmera/Input, IA/Pathfinding, Rede, Save, VFX, UI de jogo, Level Design, Polimento, Docs, Launcher, Build, Vertical Slice |
+| 10 — Animação | 🟡 **em andamento** | Núcleo de esqueleto, poses, skinning, importação glTF, cache por malha/revisão, pool de ossos e componente Animator integrados ao Editor e ao runtime. Faltam state machine, blend trees, camadas, IK, root motion, eventos, retargeting, sincronização de hitbox e editor de animação |
+| 10.5 — Estabilização crítica | ⏳ **próxima** | Corrigir componente Material, flicker/rachaduras de luz, viewport cinza no resize e tremulação residual do TAA; criar cenas de referência e baseline de performance |
+| 11 — Renderização de produção | ⏳ pendente | Cor, sombras, iluminação, pós, materiais, cel shading, debug/profiler e regressão visual |
+| 12 — Áudio de produção | ⏳ pendente | Mixer completo, DSP, spatialização, oclusão, snapshots, streaming, editor e testes |
+| 13 — Física de produção | ⏳ pendente | CCD, substepping, joints, ragdoll, character controller, veículos, queries, debug e benchmarks |
+| 14–33 | ⏳ pendente | Scripting C#, Prefabs, Scripting Visual, Câmera/Input, IA/Navegação, Save, VFX, UI, streaming, veículos, trânsito, clima, level design, rede opcional, editor, docs, launcher, build, vertical slice e endurecimento de produção |
 
 **Onde a Fase 6 travou (e foi resolvido):** o teste de ragdoll derrubava o CI com `exit code 1` (access violation) — dois bugs reais no `Engine/Physics`:
 1. *Double free* de constraint: no Jolt v5 `Constraint` é `RefTarget` e o `ConstraintManager` guarda `Array<Ref<Constraint>>`, logo `RemoveConstraint()` **já** libera o objeto; o `delete` manual do lado Kizuri destruía a mesma memória duas vezes. Agora o slot guarda `JPH::Ref<JPH::Constraint>` e quem controla a vida é o refcount do próprio Jolt.
@@ -127,15 +156,15 @@ Lição operativa: **nunca chamar `delete` em objetos do Jolt v5** — o refcoun
 - Drag and drop básico (arrastar mesh já carregada para o Viewport cria entidade)
 - Menu Bar inicial (File/Edit/Window/Help)
 - **Menus de contexto (botão direito)**: Hierarquia (Criar Entity — sempre nasce só com Transform, sem redundância entre "vazio" e "cheio" já que adicionar qualquer outro componente é sempre um passo separado via Add Component ou drag-and-drop; Duplicar, Deletar, Renomear, Focar); Viewport (em objeto: Focar/Duplicar/Deletar; em espaço vazio: Criar Entity no ponto clicado); Inspector (Remover Componente, Resetar, Copiar/Colar valores) — cada painel novo em fases futuras ganha seu próprio menu de contexto na mesma entrega
-- **Localização de shaders**: HLSL em pasta externa (`Shaders/`) durante o desenvolvimento da engine (hot-reload sem rebuild de C++); no `KizuriRuntime.exe` final (Fase 25), shaders são compilados para bytecode e embutidos, não distribuídos soltos
+- **Localização de shaders**: HLSL em pasta externa (`Shaders/`) durante o desenvolvimento da engine (hot-reload sem rebuild de C++); no `KizuriRuntime.exe` final (Fase 31), shaders são compilados para bytecode e embutidos, não distribuídos soltos
 
 **Serialização de cena**
-- **Serialização genérica baseada em reflection**: capacidade central de serializar qualquer componente para disco (`.kzscene`) e recarregar — "Salvar Cena" funciona de verdade desde aqui, não fica de fachada. Reaproveitada depois pela Fase 9 (snapshot de Play-in-Editor), Fase 12 (Prefabs) e Fase 17 (Save System do jogo) — mesma peça central, quatro consumidores
+- **Serialização genérica baseada em reflection**: capacidade central de serializar qualquer componente para disco (`.kzscene`) e recarregar — "Salvar Cena" funciona de verdade desde aqui, não fica de fachada. Reaproveitada depois pela Fase 9 (snapshot de Play-in-Editor), Fase 15 (Prefabs) e Fase 19 (Save System do jogo) — mesma peça central, quatro consumidores
 - **Autosave e recuperação de crash**: autosave periódico (intervalo configurável) para um arquivo de recuperação separado da cena principal; se o Editor abrir e encontrar uma recuperação mais recente que o último save, oferece restaurar
 - **Indicador de alterações não salvas**: asterisco no título/aba da cena; prompt de confirmação ao fechar com mudanças pendentes
 
 **Undo/Redo genérico**
-- Sistema de Undo/Redo por **comando** (command pattern) e **diff incremental** (guarda só a mudança, não snapshot completo), cobrindo desde esta fase: criar/deletar entidade, adicionar/remover componente, editar valor no Inspector, mover/rotacionar/escalar via gizmo, parenting. A Fase 21 (Level Design) mais tarde **estende** este mesmo sistema para terreno/vegetação, em vez de implementar Undo/Redo do zero de novo
+- Sistema de Undo/Redo por **comando** (command pattern) e **diff incremental** (guarda só a mudança, não snapshot completo), cobrindo desde esta fase: criar/deletar entidade, adicionar/remover componente, editar valor no Inspector, mover/rotacionar/escalar via gizmo, parenting. A Fase 26 (Level Design) mais tarde **estende** este mesmo sistema para terreno/vegetação, em vez de implementar Undo/Redo do zero de novo
 
 **Seleção múltipla**
 - **Seleção por retângulo (rubber-band) no Viewport**: clicar e arrastar em espaço vazio desenha um retângulo; entidades cujo bounding box em tela intersecta o retângulo entram na seleção
@@ -144,7 +173,7 @@ Lição operativa: **nunca chamar `delete` em objetos do Jolt v5** — o refcoun
 
 **Sistema de notificações (toasts)**
 - Painel de notificações transitórias no canto da tela, com variantes de cor (erro/aviso/info/sucesso), auto-somem após alguns segundos, com um pequeno histórico recente acessível
-- Usado sempre que uma ação não pode ser concluída (ex.: "Não é possível deletar: usado por 3 outros objetos", erro de build, falha de import) — complementa (não substitui) o sistema de validação contextual de componentes mal configurados (Fase 22)
+- Usado sempre que uma ação não pode ser concluída (ex.: "Não é possível deletar: usado por 3 outros objetos", erro de build, falha de import) — complementa (não substitui) o sistema de validação contextual de componentes mal configurados (Fase 28)
 
 **Pronto quando:** é possível criar entidades, selecionar várias por retângulo, mover o grupo pelo gizmo, desfazer/refazer qualquer uma dessas ações, salvar a cena (com indicador de não-salvo funcionando), e receber uma notificação clara quando uma ação for bloqueada — tudo sem editar código.
 
@@ -170,7 +199,7 @@ Lição operativa: **nunca chamar `delete` em objetos do Jolt v5** — o refcoun
 
 ## Fase 5 — Sombras e iluminação avançada
 
-**Objetivo:** o visual "atmosférico" que o nicho souls-like exige.
+**Objetivo:** iluminação e sombras de nível production-ready para cidade e combate. A Fase 11 revisa a qualidade e a estabilidade do que foi construído aqui.
 
 - Cascaded Shadow Maps (CSM) para luz direcional
 - Shadow maps para luzes pontuais/spot
@@ -227,7 +256,7 @@ Lição operativa: **nunca chamar `delete` em objetos do Jolt v5** — o refcoun
   - `GameWorld` — o mundo do jogo: cena + assets + renderer + física + áudio + câmera; carrega `.kzscene`, sincroniza a física com a cena e monta o caminho de render de runtime
   - `GameApp` — janela + RHI + mundo + loop; input, resize, ESC sai
   - `GameMaterial` — a conversão material→renderer em **uma implementação só** (o Editor e o runtime usam a mesma; o mesmo vale para a submissão de luzes)
-- **`KizuriRuntime.exe`** (o executável de jogo): abre uma cena (ou a cena padrão) e roda o loop — é o ancestral do stub que o sistema de Build da Fase 25 vai empacotar
+- **`KizuriRuntime.exe`** (o executável de jogo): abre uma cena (ou a cena padrão) e roda o loop — é o ancestral do executável base que o sistema de Build da Fase 31 vai empacotar
 - **Caminho de render de runtime**: luzes da cena + meshes + materiais + câmera, sem as ferramentas de edição (gizmos, overlays de debug, batching estático do editor)
 - **Entrada de runtime**: WASD move a câmera, mouse olha, ESC fecha
 
@@ -259,242 +288,430 @@ Lição operativa: **nunca chamar `delete` em objetos do Jolt v5** — o refcoun
 - Fazer Hierarquia, Inspector, seleção e Undo/Redo operarem diretamente no ECS
 - Fazer a renderização percorrer o ECS (ou um snapshot imutável dele) em vez da `Scene`
 - Unificar Play-in-Editor e runtime no mesmo mundo ECS, sem exportar transforms de volta
-- Migrar Prefabs (Fase 12) para instanciar diretamente no ECS
+- Migrar Prefabs (Fase 15) para instanciar diretamente no ECS
 
-**Por que agora:** Animação (Fase 10) e Prefabs (Fase 12) vão criar novos componentes e hierarquias; fazer a migração antes evita reescrever esses sistemas duas vezes. **Por que não bloquear a Fase 9:** o escopo aprovado da Fase 9 é a ponte cena↔ECS, e a arquitetura híbrida atual já entrega autoria, serialização, Play-in-Editor e runtime. A Fase 9.5 só deve começar se houver decisão explícita de trocar a fonte de verdade.
+**Por que agora:** Animação (Fase 10) e Prefabs (Fase 15) vão criar novos componentes e hierarquias; fazer a migração antes evita reescrever esses sistemas duas vezes. **Por que não bloquear a Fase 9:** o escopo aprovado da Fase 9 é a ponte cena↔ECS, e a arquitetura híbrida atual já entrega autoria, serialização, Play-in-Editor e runtime. A Fase 9.5 só deve começar se houver decisão explícita de trocar a fonte de verdade.
 
 ---
 
 ## Fase 10 — Animação (com retargeting)
 
-**Objetivo:** o sistema mais crítico para o gênero souls-like — golpes, dashes, reações — e reaproveitamento de animação entre personagens diferentes.
+**Objetivo:** animação de produção para personagens, multidões, veículos e combate — base tanto para a cidade quanto para um souls-like.
 
-- Sistema de esqueleto e skinning
-- Blending de múltiplas camadas (locomotion + upper body + aim)
-- IK de pés (ajuste ao terreno) e mãos
-- Look-at de cabeça/tronco
-- Root motion
-- **Sincronização de hitbox com animação**: colliders de ataque atualizados no mesmo passo de animação, antes da física do frame
-- **Retargeting de animação**: mapeamento de ossos do esqueleto de origem para um rig humanoide padrão, permitindo reaproveitar a mesma animação entre personagens com proporções/esqueletos diferentes
-- **Inspector**: desenhador de **Animator** (esqueleto, clipe atual, mapeamento de retargeting); **Editor de state machine/blend tree**; preview de esqueleto/IK no Viewport
+**Já entregue:**
+- Núcleo de esqueleto, poses, skinning por GPU e amostragem de clipes glTF
+- Importação de malhas com skin, cache de animação por malha e revisão de dados
+- Conversão de CUBICSPLINE para linear a 60 Hz no import; STEP preservado
+- Runtime com estado por entidade, `bone = IBM * model`, pool de ossos por frame e upload único antes das sombras
+- Componente Animator no Inspector e integração com Editor/Play-in-Editor/runtime
+- Malhas skinned corretamente excluídas de meshlets, LOD bake, instancing, GPU culling e static batching
+- Testes de runtime de animação no CI
 
-**Pronto quando:** um personagem anda sobre terreno irregular com IK correto, executa ataque com root motion preciso, a state machine é editável pelo Editor, e uma animação pode ser reaproveitada num segundo esqueleto via retargeting.
+**Pendente:**
+- State machine, blend trees, camadas, máscaras, additive, sync groups e eventos
+- IK de pés no terreno, mãos em objetos, look-at de cabeça/tronco e ajuste de coluna
+- Root motion com extração e aplicação corretas
+- Retargeting para rig humanoide padrão
+- Sincronização de hitbox no mesmo passo da animação
+- Blend com ragdoll e animação de multidão
+- Editor de state machine, timeline, preview, debugger de esqueleto/pesos e compressão/streaming de clipes
 
-**Estado atual:** fase iniciada. O primeiro marco é o núcleo de esqueleto, skinning e amostragem de clipes glTF, com testes no CI antes de integrar blending, IK, root motion, retargeting e a state machine no Editor.
+**Pronto quando:** um personagem anda sobre terreno irregular com IK correto, executa ataque com root motion preciso, a state machine é editável pelo Editor, uma animação é reaproveitada num segundo esqueleto via retargeting, a hitbox acompanha o osso no mesmo frame e não há popping entre clipes.
 
----
-
-## Fase 11 — Scripting em C# (Roslyn)
-
-**Objetivo:** abrir a engine para lógica de gameplay fora do C++.
-
-- Hosting do .NET/CoreCLR dentro do executável (nethost/hostfxr)
-- Pipeline de compilação via Roslyn
-- **Fronteira C++/C# sem marshalling no hot path**: Blittable Types, ponteiro direto pro ECS, validado por teste automatizado no CI
-- **Referências de Entity via handle com geração** (generational index)
-- **API C# livre de alocação no hot path** (só `struct`/tipos value)
-- **Hot-reload sem vazamento de memória**: `AssemblyLoadContext` colecionável, descarregado explicitamente
-- API C# inicial expondo os sistemas já existentes
-- Hot-reload de C# (recompilar sem reiniciar o Play Mode)
-- **Inspector**: desenhador de **Script** — campos públicos editáveis (int, float, bool, referência de Entity)
-
-**Pronto quando:** um script C# compila em runtime, afeta a cena sem reiniciar a engine, e seus campos públicos aparecem editáveis no Inspector.
+**Estado atual:** o núcleo de skinning e Animator está integrado e testado. A fase continua com os sistemas avançados acima antes de ser considerada concluída.
 
 ---
 
-## Fase 12 — Sistema de Prefabs
+## Fase 10.5 — Estabilização crítica e revisão visual
 
-**Objetivo:** permitir criar um "molde" de entidade reutilizável, instanciado várias vezes, com propagação de mudanças — essencial para popular um nível souls-like com inimigos e itens repetidos sem duplicar trabalho manualmente. Depende do ECS (Fase 9), da serialização genérica (Fase 3) e do Asset Browser (Fase 4).
+**Objetivo:** eliminar as regressões visíveis antes de expandir o renderer e criar a baseline de qualidade que as fases seguintes vão usar.
 
-- **Prefab como asset próprio** (`.kzprefab`), serializado com a mesma serialização por reflection já existente
-- **Instâncias na cena referenciam o Prefab original**; alterar o Prefab propaga automaticamente para todas as instâncias
-- **Overrides por instância**: uma instância pode sobrescrever propriedades específicas (ex.: vida maior, cor diferente) sem perder a ligação — overrides sobrevivem a atualizações do Prefab original
-- **Apply/Revert**: uma instância pode "aplicar" sua mudança de volta ao Prefab (propaga a todas as outras instâncias) ou "reverter" (descarta o override, volta ao valor do Prefab)
-- **Prefab Variants**: um Prefab pode ser baseado em outro (ex.: "Goblin Arqueiro" como variante de "Goblin Base"), herdando e podendo sobrescrever
-- **Modo de edição isolado**: dar duplo clique num Prefab abre um modo de edição próprio, fora da cena, evitando editar sem querer apenas uma instância
-- Instanciação via C# (`Instantiate(prefab)`) e via nó de Scripting Visual (`SpawnEntity`) — este último passa a existir formalmente aqui, já que precisa de um Prefab para instanciar
-- **Hierarquia**: instâncias de Prefab aparecem com indicação visual distinta (ícone/cor), sinalizando a ligação com o asset original
+- Corrigir o componente **Material** quando adicionado a uma entidade (modelo quebrado, texturas, alpha, flags ou preenchimento inicial)
+- Corrigir **flicker de luz e rachaduras de sombra** na origem: bias, precisão, cascatas, normal offset, cache e estabilidade temporal
+- Corrigir **viewport cinza ao redimensionar abas/docks**, incluindo recriação de render targets e tamanho zero transitório
+- Reduzir a tremulação residual do **TAA**, com validação em câmera parada, em movimento e com objetos animados
+- Auditar o estado real do renderer: cor, exposição, sombras, pós-processamento, materiais, TAA/velocity e debug views
+- Criar cenas de referência para material, iluminação, cidade, personagem e veículo
+- Registrar baseline de frame time, VRAM e memória no hardware de teste
+- Criar o harness de regressão visual e performance usado pelas próximas fases
 
-**Pronto quando:** um Prefab de inimigo é criado, instanciado várias vezes numa cena, uma instância tem uma propriedade sobrescrita, e alterar o Prefab original propaga para as demais instâncias sem apagar aquele override.
-
----
-
-## Fase 13 — Scripting Visual (nós)
-
-**Objetivo:** o diferencial técnico central da Kizuri.
-
-- Editor de nós (UI baseada em Dear ImGui)
-- Pinos de execução (fio de fluxo) e pinos de dados (fio tipado)
-- Geração de código C# real a partir do grafo
-- **Nós assíncronos (Delay, loops com espera)**: máquina de estados assíncrona (`async`/`await`) ou corrotina gerenciada — nunca `Thread.Sleep`
-- **Compilação incremental via Roslyn**: só o(s) grafo(s) modificado(s), em background pelo Job System
-- **Exibição de erro de compilação**: dupla via Console (mensagem completa) e inline no nó problemático (ícone/borda vermelha diretamente no grafo, sem precisar caçar no log)
-- Debug de grafo: valores em tempo real, breakpoints
-- **Menu de contexto do editor de nós**: Adicionar Nó (busca por categoria), Deletar, Copiar/Colar nós
-- **Inspector**: um grafo de nós salvo aparece no componente Script (Fase 11) como mais uma opção de script anexável
-
-**Pronto quando:** um grafo simples (`OnBeginPlay → PlayAnimation`) funciona no Play Mode, um erro proposital no grafo aparece tanto no Console quanto destacado no nó culpado, e o grafo pode ser anexado a uma entidade como qualquer outro script.
+**Pronto quando:** os quatro problemas estão corrigidos com teste de regressão, as cenas de referência existem, a baseline está registrada e não há bug P0/P1 conhecido no renderer.
 
 ---
 
-## Fase 14 — Câmera e Input
+## Fase 11 — Renderização de produção
 
-**Objetivo:** os sistemas que todo jogo do gênero precisa, prontos de fábrica.
+**Objetivo:** transformar o renderer de "conjunto de efeitos" em pipeline de produção: imagem estável, cor consistente, sombras sem artefatos, materiais corretos e custo previsível.
 
-- Câmera terceira pessoa com colisão (C++ para o raycast, configurável via C#)
-- Sistema de input com rebind completo e múltiplos dispositivos simultâneos
-- **Inspector**: desenhador de **Camera Controller** (distância, sensibilidade, offset, alvo)
+- **Cor e exposição:** workflow linear, sRGB correto, HDR, exposição manual/automática, tonemap ACES e alternativas, LUT, contraste, saturação, balanço de branco e consistência total entre Editor e runtime
+- **Sombras:** CSM com cascatas estáveis, bias automático, normal offset, PCF/PCSS, contact shadows, point/spot, atlas, cache, resolução dinâmica com critério e eliminação de shimmer/rachaduras
+- **Iluminação:** direcional, point, spot, area/rect, IBL, reflection probes, DDGI, light layers, cookies, unidades físicas, temperatura de cor, clustered/Forward+ e muitas luzes sem queda de frame
+- **Materiais:** PBR correto em energia/Fresnel/normais/ORM/alpha/double-sided, clearcoat, sheen, transmission, volume, anisotropia, iridescência, dispersão, layered materials, decals, detail maps, POM, tessellation e virtual textures; corrigir o componente Material e o preenchimento a partir de malha
+- **Pós-processamento:** SSAO/GTAO, SSR, SSGI, TAA com velocity buffer, FXAA, bloom, DOF, motion blur, god rays, fog volumétrico, film grain, vinheta e heat haze; ordem, qualidade e custo documentados
+- **Geometria:** meshlets, GPU culling, oclusão, LOD, instancing, static batching e streaming; malhas skinned fora de meshlets, LOD bake, instancing, GPU culling e static batching
+- **Cel shading:** rampa, contornos por normal/depth, especular estilizado, sombras pintadas, presets e convivência com PBR na mesma cena
+- **Ferramentas:** render graph debugger, debug views, visualização de G-buffer/sombras/luzes/probes/overdraw/HZB, tempos de GPU por passe, shader hot reload e captura de frame
+- **Qualidade obrigatória:** zero flicker de luz, zero rachadura de sombra, zero costura de cascata, zero ghosting de TAA, zero popping de LOD e zero diferença de cor entre Editor e jogo
+- **Cenas de referência:** material, iluminação, cidade, personagem, veículo e efeitos; regressão visual e orçamento de frame time no CI
 
-**Pronto quando:** a câmera segue um personagem sem atravessar paredes, o jogador remapeia uma tecla em runtime, e o Camera Controller é configurável pelo Inspector.
-
----
-
-## Fase 15 — IA e Pathfinding
-
-**Objetivo:** inimigos que se movem de forma inteligente pelo cenário.
-
-- Geração de NavMesh
-- **NavMesh particionado em regiões (tiles)**, recalculando só a região afetada
-- Pathfinding hierárquico (mundos grandes)
-- Group avoidance (múltiplos inimigos)
-- **Inspector**: desenhador de **NavAgent**; visualização do NavMesh e do caminho calculado no Viewport
-
-**Pronto quando:** um inimigo persegue o jogador desviando de obstáculos e outros inimigos, e o NavMesh é visualizável no Viewport.
+**Pronto quando:** as cenas de referência não apresentam artefatos, o preset alto roda a 1080p/60 no hardware recomendado, o piso GT 610 roda o preset baixo em 720p/30, e a regressão visual/performance está automatizada.
 
 ---
 
-## Fase 16 — Rede (P2P)
+## Fase 12 — Áudio de produção
 
-**Objetivo:** suporte a co-op no estilo Dark Souls.
+**Objetivo:** mixer e áudio espacial de nível profissional, não apenas tocar clipes.
 
-- Integração do GameNetworkingSockets
-- Modelo P2P com host migration
-- **Client-side prediction com reconciliação (rollback)** — especificação técnica detalhada antes da implementação
-- Sincronização básica de posição/estado de entidades entre peers
-- **Inspector**: desenhador de **NetworkIdentity**
+- **Mixer:** grafo de buses hierárquico (Master → Música, SFX, Voz, Ambiente, UI, Veículos), sends/returns, inserts, volume, mute, solo e snapshots
+- **DSP:** EQ, compressor, limiter, reverb, delay, filtros, distortion e medidores por bus
+- **Ducking:** sidechain configurável entre buses, com ataque/release e prioridade
+- **Espacialização:** atenuação, panning, Doppler, oclusão, reverb zones, ambiência e emitters 3D
+- **Streaming e vozes:** clipes longos, voice management, prioridade, limite de vozes e virtualização
+- **Editor:** Audio Mixer completo, roteamento visual, curvas, preview, salvamento como asset, Undo/Redo e Inspector de AudioSource
+- **Qualidade obrigatória:** sem clique/estalo, sem corte abrupto, sem vazamento entre buses, latência e custo medidos
+- **Testes:** roteamento, ducking, automação, sinal sintético, limite de vozes e performance
 
-**Pronto quando:** dois clientes se conectam, veem um ao outro se movendo, a sessão sobrevive à saída do host original, e uma entidade é marcável como sincronizada pelo Inspector.
-
----
-
-## Fase 17 — Save System (do jogo)
-
-**Objetivo:** persistência de progresso do jogador — não confundir com "Salvar Cena" do Editor (Fase 3).
-
-- **Reaproveita a serialização genérica da Fase 3** — constrói só a camada de gameplay: save slots, autosave, exposto via C# para o jogo decidir quando salvar
-- **Inspector**: componente marcador **Saveable**
-
-**Pronto quando:** o estado de uma cena é salvo num save slot e recarregado pelo jogo, e uma entidade é marcável como "salvável" pelo Inspector.
+**Pronto quando:** uma cena com música, SFX, voz, ambiente e veículo mixa corretamente, o jogador ouve direção/distância/oclusão, o mixer é editável e salvo pelo Editor, e os testes de sinal passam no CI.
 
 ---
 
-## Fase 18 — VFX
+## Fase 13 — Física de produção
 
-**Objetivo:** partículas de alta escala sem custo de CPU.
+**Objetivo:** física estável e completa para personagem, cidade, veículos e combate.
 
-- Sistema de partículas GPU-based
-- **Inspector/Editor**: desenhador de **Particle System** e painel de Editor de VFX (curvas de emissão, cor ao longo do tempo, forma de emissor)
+- **Jolt:** CCD, substepping, solver settings, interpolação de render e adaptador de Job System
+- **Corpos e colisores:** box, sphere, capsule, mesh, heightfield, compound, estático/dinâmico/cinemático
+- **Materiais:** fricção, restituição, massa, inércia, damping, gravidade e layers
+- **Joints e ragdoll:** point, hinge, cone, slider, fixed, six-DOF, ragdoll e blend com animação
+- **Character controller:** rampas, escadas, plataformas móveis, crouch, push e colisão contínua
+- **Veículos (fundação):** suspensão, pneus, motor, câmbio, direção, freio, drift e dano; refinamento na Fase 23
+- **Queries:** raycast, shapecast, overlap e filtros
+- **Debug e performance:** wireframe, contatos, forças, tempos por passo e benchmarks
+- **Qualidade obrigatória:** sem tunneling em alta velocidade, sem jitter de repouso, sem ragdoll explodindo, sem plataforma atravessando o chão
 
-**Pronto quando:** milhares de partículas rodam sem impacto perceptível de frame, e um efeito é montável do zero pelo Editor de VFX.
-
----
-
-## Fase 19 — UI de jogo (HUD/menus)
-
-**Objetivo:** ferramenta para o dev construir a interface do jogo final.
-
-- Framework de UI retained-mode, separado do Dear ImGui (só do editor)
-- Suporte a data-binding simples (ex.: barra de vida ligada a uma variável)
-
-**Pronto quando:** um HUD simples (barra de vida + menu de pause) é montado visualmente, sem código extra.
+**Pronto quando:** personagem sobe rampa/escada e anda em plataforma móvel sem tremer, veículo protótipo acelera/freia/curva sem instabilidade, ragdoll reage sem explodir e os testes de estresse passam no CI.
 
 ---
 
-## Fase 20 — Ferramentas de Level Design
+## Fase 14 — Scripting em C# (Roslyn)
 
-**Objetivo:** construir níveis souls-like diretamente no editor.
+**Objetivo:** abrir a engine para lógica de gameplay fora do C++, com API genérica e sem custo no hot path.
 
-- Terreno via sculpting manual (heightmap)
-- Pintura de vegetação (instancing em massa)
-- Editor de materiais PBR completo
-- **Reaproveita o Undo/Redo genérico da Fase 3**, estendido para diffs de terreno/vegetação (não uma implementação nova)
+- Hosting do .NET/CoreCLR (nethost/hostfxr)
+- Pipeline de compilação via Roslyn e hot reload com `AssemblyLoadContext` colecionável
+- **Fronteira C++/C# sem marshalling no hot path:** Blittable Types, ponteiro direto para o ECS e teste de layout no CI
+- **Referências de Entity via handle com geração**, sem ponteiro cru
+- **API C# livre de alocação no hot path** (structs/tipos value)
+- API inicial expondo renderer, física, áudio, animação, input, cena e assets
+- **Inspector:** componente Script com campos públicos editáveis (int, float, bool, referência de Entity, asset)
+- Testes de compilação, hot reload, GC e chamadas por frame
 
-**Pronto quando:** é possível esculpir um morro à mão e pintar vegetação, com Undo/Redo funcionando e boa performance.
-
----
-
-## Fase 21 — Polimento do Editor
-
-**Objetivo:** as ferramentas transversais que tornam o editor profissional — os desenhadores de componente e as fundações de UX (Undo/Redo, notificações, seleção múltipla) já nasceram junto de cada sistema (Fases 3 a 17); esta fase cruza tudo isso.
-
-- Profiler visual (CPU/GPU/memória por sistema)
-- Sistema de validação contextual (avisos estilo Godot) aplicado a todos os componentes existentes
-- Atalhos de teclado customizáveis
-- Menu Bar completo (File/Edit/Assets/Entity/Window/Help)
-- Consolidação dos debuggers já existentes (física, animação, NavMesh) numa aba de Debug unificada
-
-**Pronto quando:** todos os módulos acima estão integrados e acessíveis pela Menu Bar/atalhos.
+**Pronto quando:** um script C# compila em runtime, altera a cena sem reiniciar a engine, aparece editável no Inspector e o hot reload não vaza memória.
 
 ---
 
-## Fase 22 — Documentação integrada
+## Fase 15 — Sistema de Prefabs
 
-**Objetivo:** documentação gerada junto com o código, navegável de dentro do editor.
+**Objetivo:** criar moldes reutilizáveis com propagação de mudanças, overrides e variants — essencial para carros, pedestres, props e missões.
 
-- Geração de documentação a partir dos comentários XML do C#
-- Painel de documentação dockable (estilo Godot), busca e `F1` contextual
-- Publicação do mesmo conteúdo como site estático externo
+- Prefab como asset próprio (`.kzprefab`), serializado pela mesma capacidade genérica da Fase 3
+- Instâncias referenciam o Prefab; alterar o original propaga para todas
+- Overrides por instância que sobrevivem a atualizações do Prefab
+- Apply/Revert e Prefab Variants
+- Modo de edição isolado
+- Instanciação via C# e via Scripting Visual
+- Indicação visual de instância na Hierarquia
 
-**Pronto quando:** clicar `F1` sobre um nó/função abre a página de referência correta.
+**Pronto quando:** um Prefab de carro ou inimigo é criado, instanciado várias vezes, uma instância tem override, e alterar o original propaga sem apagar o override.
 
 ---
 
-## Fase 23 — Launcher e Instalador
+## Fase 16 — Scripting Visual (nós)
 
-**Objetivo:** distribuição real da engine, fora do ambiente de desenvolvimento.
+**Objetivo:** o diferencial técnico da Kizuri: lógica visual que gera C# real, não interpretação nó a nó.
 
-- Kizuri Launcher (lista de projetos, criação de projeto em branco, `.kzproj`)
+- Editor de nós com pinos de execução e dados
+- Geração de C# real e legível, compilada por Roslyn
+- Nós assíncronos (Delay, loops com espera) sem `Thread.Sleep`
+- Compilação incremental em background
+- Erro de compilação no Console e inline no nó
+- Debug com valores em tempo real e breakpoints
+- Menu de contexto e Inspector para anexar grafo a uma entidade
+
+**Pronto quando:** um grafo `OnBeginPlay → PlayAnimation` funciona no Play Mode, um erro proposital aparece no Console e no nó, e o grafo é anexável como qualquer script.
+
+---
+
+## Fase 17 — Câmera e Input
+
+**Objetivo:** câmeras e input prontos para personagem a pé, veículo e cinemática.
+
+- Câmera terceira pessoa, primeira pessoa, veículo, livre e cinemática
+- Colisão por raycast/shapecast em C++, configurável
+- Lock-on opcional como camada de gameplay
+- Shake, blends, prioridade, post-process por câmera e sequências
+- Input com rebind, perfis, múltiplos dispositivos e mapeamento contextual (a pé/veículo/UI)
+- **Inspector:** Camera Controller e Input Actions
+
+**Pronto quando:** a câmera segue o personagem sem atravessar parede, a câmera de veículo funciona em velocidade, o jogador remapeia teclas e o controller é configurável pelo Inspector.
+
+---
+
+## Fase 18 — IA, Navegação e Multidões
+
+**Objetivo:** agentes que navegam e se comportam bem em cidade e em combate.
+
+- NavMesh com Recast & Detour, geração por tiles e recálculo local
+- Pathfinding hierárquico e assíncrono
+- Behavior trees/utility AI, percepção, memória e squad
+- Group avoidance e formação
+- Multidões com LOD de IA, atualização por frequência e pooling
+- **Inspector:** NavAgent e Behavior; debug de NavMesh, caminho, percepção e estado
+
+**Pronto quando:** um agente persegue o jogador desviando de obstáculos e outros agentes, uma multidão de teste roda no orçamento e o NavMesh é visualizável no Viewport.
+
+---
+
+## Fase 19 — Save System (do jogo)
+
+**Objetivo:** persistência de progresso, separada do "Salvar Cena" do Editor.
+
+- Reaproveita a serialização genérica da Fase 3
+- Save slots, autosave, versionamento e migração de formato
+- **Inspector:** componente Saveable
+- Testes de ida e volta, corrupção e compatibilidade
+
+**Pronto quando:** o estado de uma cena é salvo e recarregado, uma entidade é marcável como salvável e um save antigo migra sem quebrar.
+
+---
+
+## Fase 20 — VFX
+
+**Objetivo:** partículas e efeitos de alta escala com custo controlado.
+
+- Partículas GPU-based, emissores, curvas, colisão, trails, decals e sorting
+- LOD de efeitos e orçamento por cena
+- Editor de VFX com preview e curvas
+- **Inspector:** Particle System
+
+**Pronto quando:** milhares de partículas rodam sem impacto perceptível, um efeito é montável do zero no Editor e o custo é medido.
+
+---
+
+## Fase 21 — UI de jogo (HUD/menus)
+
+**Objetivo:** ferramenta para o dev construir a interface do jogo, separada do ImGui do editor.
+
+- Framework retained-mode próprio
+- Layout, âncoras, temas, fontes e escalabilidade por DPI
+- Data binding simples (vida, velocidade, munição, minimapa)
+- Navegação por gamepad/teclado e acessibilidade básica
+- Editor de UI com preview
+
+**Pronto quando:** um HUD (vida + velocidade + menu de pausa) é montado visualmente sem código extra e funciona em diferentes resoluções/DPIs.
+
+---
+
+## Fase 22 — Streaming e mundo aberto
+
+**Objetivo:** cidade contínua sem hitch, sem popping e sem vazamento.
+
+- Divisão em células, carregamento/descarregamento assíncrono e orçamento por frame
+- HLOD, LOD, oclusão, meshlets/GPU culling, instancing e static batching em escala
+- Texture streaming por distância/célula, orçamento de VRAM, priorização e cancelamento
+- Áudio e emitters carregados/descarregados com a célula
+- Origin Rebasing e precisão em coordenadas grandes
+- Editor de mundo/streaming, preview de célula e debug de memória
+- Testes de costura, popping, hitch e vazamento
+
+**Pronto quando:** um quarteirão carrega e descarrega sem hitch perceptível, sem costura visível, sem vazamento e dentro do orçamento de memória/VRAM.
+
+---
+
+## Fase 23 — Veículos
+
+**Objetivo:** carros jogáveis de produção, integrados à cidade.
+
+- Física de suspensão, pneus, motor, câmbio, direção, freio e drift
+- Câmera de veículo, som, dano, combustível e entrada/saída
+- Integração com trânsito, IA e streaming
+- Editor de veículo com tuning e preview
+- Testes de aceleração, frenagem, curva, impacto e estabilidade
+
+**Pronto quando:** o jogador dirige pela cidade, colide, derrapa, ouve o motor e a câmera responde sem instabilidade.
+
+---
+
+## Fase 24 — Trânsito e multidões
+
+**Objetivo:** cidade viva, com carros e pedestres em escala.
+
+- Faixas, cruzamentos, semáforos, regras e congestionamento
+- Spawning/despawning por célula e densidade configurável
+- Pedestres com navegação, animação, LOD e comportamento
+- Multidão com streaming, pooling e orçamento de CPU
+- Debug de trânsito, rotas, densidade e agentes
+- Testes de estabilidade e performance
+
+**Pronto quando:** um quarteirão tem trânsito e pedestres coerentes, sem travamento, dentro do orçamento e com LOD funcionando.
+
+---
+
+## Fase 25 — Ciclo de dia/noite e clima
+
+**Objetivo:** atmosfera dinâmica e consistente com iluminação, áudio e gameplay.
+
+- Sol/lua, céu procedural/HDR, estrelas e fase da lua
+- Hora do dia com keyframes, transições e presets por região
+- Fog, nuvens, chuva, neve, vento e superfícies molhadas
+- Integração com áudio ambiente e iluminação
+- Editor de tempo/clima com preview
+- Testes de transição e performance
+
+**Pronto quando:** o ciclo completa 24h sem popping, o clima altera iluminação/áudio/superfícies de forma coerente e o editor permite criar presets.
+
+---
+
+## Fase 26 — Ferramentas de level design urbano
+
+**Objetivo:** construir cidade no Editor, não no código.
+
+- Terreno por heightmap e sculpting manual
+- Ruas, calçadas, quarteirões, prédios, props e vegetação
+- Snapping, brushes, pintura e colocação com Prefabs
+- Integração com streaming/células e validação
+- Undo/Redo incremental para terreno, pintura e colocação
+- Ferramentas de luz, áudio e trânsito no nível
+
+**Pronto quando:** um quarteirão completo é construído do zero no Editor, com undo/redo, streaming e boa performance.
+
+---
+
+## Fase 27 — Rede (opcional)
+
+**Objetivo:** suporte a co-op quando o projeto exigir, sem contaminar o núcleo single-player.
+
+- GameNetworkingSockets, P2P e host migration
+- Client-side prediction com reconciliação/rollback
+- Sincronização de posição/estado e prioridade
+- **Inspector:** NetworkIdentity
+- Testes de latência, perda de pacotes e migração
+
+**Pronto quando:** dois clientes se conectam, veem um ao outro, a sessão sobrevive à saída do host e o estado converge.
+
+---
+
+## Fase 28 — Editor de produção e profiler
+
+**Objetivo:** ferramentas transversais de nível profissional.
+
+- Profiler visual (CPU/GPU/memória/frame time por sistema)
+- Render graph debugger
+- Validação contextual em todos os componentes
+- Atalhos customizáveis, Menu Bar completo e debuggers unificados
+- Asset dependency, build settings e diagnóstico de projeto
+- Acessibilidade e escalabilidade de UI/DPI
+
+**Pronto quando:** todos os sistemas são inspecionáveis no Editor e um problema de performance/asset pode ser diagnosticado sem abrir o código.
+
+---
+
+## Fase 29 — Documentação integrada
+
+**Objetivo:** documentação gerada junto com o código e navegável de dentro do Editor.
+
+- Geração a partir de comentários XML do C#
+- Painel dockable com busca e `F1` contextual
+- Site estático com o mesmo conteúdo
+- Guias de sistemas, exemplos e limitações
+
+**Pronto quando:** `F1` sobre um nó/função abre a página correta e a documentação cobre todos os sistemas expostos.
+
+---
+
+## Fase 30 — Launcher e instalador
+
+**Objetivo:** distribuição real da engine.
+
+- Launcher com projetos recentes, criação de projeto e `.kzproj`
 - Instalador completo (Editor + Launcher + runtime .NET)
-- Preferências de layout do editor salvas em `%APPDATA%/Kizuri/`, fora da pasta do projeto
-- **Versionamento engine vs. projeto**: `.kzproj` guarda a versão exata da engine usada; se um projeto for aberto numa versão mais nova, o Launcher mostra um aviso não-bloqueante ("este projeto foi criado numa versão anterior; abrir pode causar incompatibilidades") e oferece fazer uma cópia de backup antes de prosseguir — nunca migra silenciosamente sem confirmação
+- Layout do editor em `%APPDATA%/Kizuri/`
+- Versionamento engine/projeto com aviso e backup antes de migrar
 
-**Pronto quando:** é possível instalar a engine numa máquina limpa, criar um projeto, abrir o Editor configurado, e abrir um projeto de versão antiga gera o aviso esperado em vez de falhar silenciosamente.
-
----
-
-## Fase 24 — Sistema de Build final
-
-**Objetivo:** gerar o executável do jogo, enxuto e funcional, sem exigir compilação C++ do dev.
-
-- Compilação interna (só pelo Kizuri Studio) do núcleo como `KizuriRuntime.exe` — stub com os sistemas fundamentais já linkados
-- **Configurações de build Debug e Release**: dois stubs pré-compilados pelo Kizuri Studio — Debug (asserts ativos, logs verbosos, símbolos de depuração, sem otimização agressiva) e Release (otimizado, logging mínimo) — o dev escolhe qual gerar no momento do Build, sem precisar compilar C++ para isso
-- Análise de uso de API C# por projeto (quais sistemas opcionais o jogo referencia)
-- Build 1-clique: copia o stub (Debug ou Release) renomeado para o nome do jogo, empacota assets + C# compilado, copia as `.dll` opcionais referenciadas
-
-**Pronto quando:** dois projetos diferentes (com/sem rede) geram pastas de build de tamanhos diferentes, e o mesmo projeto pode gerar tanto uma build Debug quanto Release sem nenhuma compilação C++ na máquina do dev.
+**Pronto quando:** a engine instala numa máquina limpa, cria projeto, abre o Editor e um projeto antigo gera o aviso esperado.
 
 ---
 
-## Fase 25 — Vertical Slice de validação
+## Fase 31 — Build, cook e distribuição
 
-**Objetivo:** provar que a engine cumpre a promessa de performance com conteúdo real.
+**Objetivo:** gerar o jogo final sem compilação C++ na máquina do dev.
 
-- Construir uma cena pequena mas representativa de souls-like (boss simples, terreno esculpido, iluminação atmosférica, IA básica, alguns Prefabs de inimigo)
-- Rodar benchmark nas GPUs de referência (mínimo e recomendado, definidas no TDD)
-- Ajustar a tabela de requisitos de hardware com dados reais em vez de estimativa
+- Executável base com núcleo linkado
+- Cook de assets, pak, compressão e shader bytecode
+- Build Debug e Release
+- Análise de DLLs opcionais referenciadas
+- Build 1-clique, reprodutível e assinado
+- Testes de build limpo e integridade do pacote
 
-**Pronto quando:** a vertical slice roda dentro da meta de frame time definida no TDD, no hardware mínimo estimado.
+**Pronto quando:** dois projetos (com/sem rede) geram builds diferentes, Debug/Release funcionam e o pacote roda numa máquina limpa.
+
+---
+
+## Fase 32 — Vertical slice urbana
+
+**Objetivo:** provar a engine com conteúdo real, não com cena de teste.
+
+- Quarteirão jogável com ruas, prédios, carro, pedestres, trânsito e missão simples
+- Ciclo de dia/noite, clima, áudio, UI, save e streaming
+- Benchmark no hardware mínimo e recomendado
+- Correção de bugs encontrados e ajuste dos orçamentos
+
+**Pronto quando:** a slice é jogável do início ao fim, sem bug P0/P1, dentro da meta de frame time no hardware mínimo e com números reais registrados.
+
+---
+
+## Fase 33 — Endurecimento de produção
+
+**Objetivo:** transformar a vertical slice em base confiável para o jogo completo.
+
+- Crash reporting, telemetria e diagnóstico
+- Matriz de QA (hardware, resolução, DPI, idioma, save)
+- Performance, memória, carregamento e estabilidade
+- Acessibilidade, localização e polish de UI
+- Checklist de release, issues conhecidas e documentação final
+- Projeto de exemplo e validação de instalador/build
+
+**Pronto quando:** a engine e a slice passam na matriz de QA, não há vazamento/crash conhecido, os orçamentos são cumpridos e existe um release candidate documentado.
 
 ---
 
 ## Itens em aberto (ainda não decididos)
 
-A auditoria anterior levantou 11 lacunas. Com as decisões desta rodada, restam as seguintes, genuinamente sem decisão ainda tomada:
+As decisões abaixo continuam abertas e serão fechadas antes da fase correspondente:
 
-### Streaming de mundo (fora de escopo, confirmado)
-A arquitetura atual (Origin Rebasing, Fase 1) resolve precisão matemática em mundos grandes, mas conscientemente **não** inclui carregar/descarregar partes do mundo dinamicamente — isso só seria necessário se a engine expandir no futuro para um gênero de mundo aberto contínuo, fora do escopo souls-like atual. Decisão confirmada como fora de escopo, não uma lacuna pendente.
+### Streaming de mundo (em escopo, estratégia a definir)
+O streaming agora é requisito do primeiro jogo urbano. A arquitetura já tem Origin Rebasing (Fase 1), mas o tamanho de célula, a estratégia de HLOD, o orçamento de VRAM e a política de despejo serão definidos na Fase 22 com a cena de referência.
 
-Todos os demais itens da auditoria anterior (Prefabs, Undo/Redo, seleção múltipla, dependência de assets, mixagem de áudio, retargeting, autosave, indicador de não-salvo, Build Debug/Release, erro de Roslyn, versionamento engine/projeto) foram resolvidos nesta rodada e já estão incorporados nas fases acima.
+### ECS como fonte única (Fase 9.5)
+A migração 100% ECS continua opcional e não aprovada. A arquitetura híbrida (Scene para autoria/serialização, ECS para runtime) segue como base. A decisão será reavaliada antes de Prefabs e do mundo aberto.
+
+### Rede
+Co-op é opcional. O primeiro jogo é single-player; a Fase 27 só entra se o projeto exigir. A arquitetura não pode impedir rede, mas não será contaminada por ela.
+
+### Estilo visual
+A base é PBR realista, com cel shading como modo de material/câmera. A proporção entre realismo e estilo no primeiro jogo ainda será definida com uma cena de referência.
+
+### Escopo do primeiro jogo urbano
+Tamanho da cidade, quantidade de interiores, densidade de trânsito/pedestres, multiplayer e plataformas de lançamento ainda não estão fechados. A vertical slice da Fase 32 define o orçamento real.
+
+### Física de veículos
+A decisão entre modelo de raycast, sweep ou corpos rígidos compostos no Jolt será tomada na Fase 13 com testes de estabilidade, e refinada na Fase 23.
+
+### Hardware e presets
+A tabela do TDD define piso de compatibilidade, mínimo de produção e recomendado. Os presets Baixo/Médio/Alto/Ultra serão calibrados com a vertical slice e não por estimativa.
+
+### Escopo da API C# e do Scripting Visual
+A API inicial cobre os sistemas existentes na Fase 14; a superfície definitiva cresce junto com os sistemas seguintes e é documentada na Fase 29.
 
 ---
 
@@ -510,22 +727,32 @@ Fase 4  → Pipeline de Assets + Asset Browser + dependência entre assets
 Fase 5  → Iluminação/sombras avançadas + céu procedural + Inspector de Light
 Fase 6  → Física (Jolt) + Inspector de Rigidbody/Ragdoll
 Fase 7  → Áudio + Mixer completo (buses, ducking, reverb) + Inspector de AudioSource
+Fase 8  → Runtime de Jogo (GameLoop, GameWorld, GameApp, KizuriRuntime)
 Fase 9  → ECS/Gameplay Framework + "Add Component" genérico + parenting + Play-in-Editor
-Fase 9.5 (opcional, proposta) → ECS como fonte única; só se aprovada antes da Fase 10/12
-Fase 10 → Animação + Retargeting + Inspector de Animator + editor de state machine
-Fase 11 → Scripting C#/Roslyn + Inspector de Script
-Fase 12 → Sistema de Prefabs (overrides, variants, apply/revert)
-Fase 13 → Scripting Visual (nós) + exibição de erro inline
-Fase 14 → Câmera/Input + Inspector de Camera Controller
-Fase 15 → IA/Pathfinding + Inspector de NavAgent
-Fase 16 → Rede P2P + Inspector de NetworkIdentity
-Fase 17 → Save System do jogo (reaproveita serialização da Fase 3) + Inspector de Saveable
-Fase 18 → VFX + Editor de partículas
-Fase 19 → UI de jogo
-Fase 20 → Ferramentas de Level Design (reaproveita Undo/Redo da Fase 3)
-Fase 21 → Polimento do Editor (transversal)
-Fase 22 → Documentação integrada
-Fase 23 → Launcher/Instalador + versionamento engine/projeto
-Fase 24 → Sistema de Build final + Debug/Release
-Fase 25 → Vertical Slice de validação
+Fase 9.5 (opcional, proposta) → ECS como fonte única; só se aprovada antes de Prefabs/mundo aberto
+Fase 10 → Animação completa (skinning, state machine, camadas, IK, root motion, retargeting)
+Fase 10.5 → Estabilização crítica (Material, luz, viewport, TAA, cenas de referência)
+Fase 11 → Renderização de produção (cor, sombras, iluminação, pós, materiais, cel shading)
+Fase 12 → Áudio de produção (mixer, DSP, spatialização, oclusão, streaming)
+Fase 13 → Física de produção (CCD, character controller, veículos fundação, ragdoll)
+Fase 14 → Scripting C#/Roslyn + Inspector de Script
+Fase 15 → Sistema de Prefabs (overrides, variants, apply/revert)
+Fase 16 → Scripting Visual (nós) + exibição de erro inline
+Fase 17 → Câmera/Input (personagem, veículo, cinemática) + Inspector
+Fase 18 → IA/Navegação/Multidões (NavMesh, behavior, avoidance)
+Fase 19 → Save System do jogo (reaproveita serialização da Fase 3)
+Fase 20 → VFX + Editor de partículas
+Fase 21 → UI de jogo (HUD/menus)
+Fase 22 → Streaming e mundo aberto (células, HLOD, texturas, áudio, memória)
+Fase 23 → Veículos (física, câmera, som, dano, trânsito)
+Fase 24 → Trânsito e multidões (faixas, semáforos, pedestres, LOD)
+Fase 25 → Ciclo de dia/noite e clima
+Fase 26 → Ferramentas de level design urbano (ruas, quarteirões, prédios)
+Fase 27 → Rede P2P opcional
+Fase 28 → Editor de produção e profiler
+Fase 29 → Documentação integrada
+Fase 30 → Launcher/Instalador + versionamento engine/projeto
+Fase 31 → Build, cook e distribuição
+Fase 32 → Vertical slice urbana
+Fase 33 → Endurecimento de produção
 ```
