@@ -217,6 +217,7 @@ struct RenderStats {
   uint32_t staticSavedDraws = 0;
   uint32_t clusterMax = 0;
   float clusterAvg = 0.0f;
+  uint32_t shadowAtlasClears = 0;
   bool shadowCached = false;
   double msSubmit = 0.0;
   double msShadow = 0.0;

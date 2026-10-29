@@ -3052,6 +3052,11 @@ void DeferredRenderer::RenderShadowMaps() {
     return;
   }
   float identity[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+  if (anyDir || spotsMapped > 0) {
+    rhi->SetRenderTargets(0, nullptr, shadowAtlas);
+    rhi->ClearDepth(shadowAtlas);
+    ++stats.shadowAtlasClears;
+  }
   rhi->SetInputLayout(layout);
   rhi->SetVertexShader(depthVS);
   rhi->SetPixelShader(0);
@@ -3115,7 +3120,6 @@ void DeferredRenderer::RenderShadowMaps() {
       tvp.minD = 0.0f;
       tvp.maxD = 1.0f;
       rhi->SetViewport(tvp);
-      rhi->ClearDepth(shadowAtlas);
       for (size_t di = 0; di < shadowDraws.size(); ++di) {
         GeoConstants gc;
         std::memcpy(gc.world, shadowDraws[di].world, sizeof(gc.world));
@@ -3162,7 +3166,6 @@ void DeferredRenderer::RenderShadowMaps() {
     tvp.minD = 0.0f;
     tvp.maxD = 1.0f;
     rhi->SetViewport(tvp);
-    rhi->ClearDepth(shadowAtlas);
     for (size_t di = 0; di < shadowDraws.size(); ++di) {
       GeoConstants gc;
       std::memcpy(gc.world, shadowDraws[di].world, sizeof(gc.world));
