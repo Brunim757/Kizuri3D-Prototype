@@ -64,16 +64,16 @@ void ShadowSunMatrix(const float sunDir[3], const float camPos[3], const float c
   using namespace DirectX;
   float corners[8][3];
   ShadowFrustumCorners(camPos, camFwd, camRight, camUp, fovY, aspect, splitNear, splitFar, corners);
-  XMVECTOR c = XMVectorZero();
-  for (int i = 0; i < 8; ++i) {
-    c += XMVectorSet(corners[i][0], corners[i][1], corners[i][2], 0.0f);
-  }
-  c /= 8.0f;
   XMVECTOR L = XMVectorSet(sunDir[0], sunDir[1], sunDir[2], 0.0f);
   if (XMVectorGetX(XMVector3LengthSq(L)) < 1e-8f) {
     L = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
   }
   L = XMVector3Normalize(L);
+  XMVECTOR c = XMVectorZero();
+  for (int i = 0; i < 8; ++i) {
+    c += XMVectorSet(corners[i][0], corners[i][1], corners[i][2], 0.0f);
+  }
+  c /= 8.0f;
   float radius = 0.0f;
   for (int i = 0; i < 8; ++i) {
     XMVECTOR p = XMVectorSet(corners[i][0], corners[i][1], corners[i][2], 0.0f);
@@ -85,39 +85,47 @@ void ShadowSunMatrix(const float sunDir[3], const float camPos[3], const float c
   if (radius < 0.01f) {
     radius = 0.01f;
   }
+  int ts = tileSize > 0 ? tileSize : 2048;
+  float texel = (radius * 2.0f) / static_cast<float>(ts);
+  float extent = radius + texel;
+  float quantum = (extent * 2.0f) / static_cast<float>(ts);
   XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
   if (std::fabs(XMVectorGetX(XMVector3Dot(L, up))) > 0.99f) {
     up = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
   }
-  XMVECTOR eye = c - L * (radius * 2.0f);
-  XMMATRIX view = XMMatrixLookAtLH(eye, c, up);
-  float maxExtent = 0.0f;
+  float centerZ = XMVectorGetX(XMVector3Dot(c, L));
+  float shift = extent * 2.0f - centerZ;
+  XMVECTOR eye = -L * shift;
+  XMMATRIX view = XMMatrixLookAtLH(eye, eye + L, up);
+  float minX = 0.0f;
+  float minY = 0.0f;
   for (int i = 0; i < 8; ++i) {
     XMVECTOR p = XMVectorSet(corners[i][0], corners[i][1], corners[i][2], 1.0f);
     XMVECTOR q = XMVector3TransformCoord(p, view);
-    float ax = std::fabs(XMVectorGetX(q));
-    float ay = std::fabs(XMVectorGetY(q));
-    if (ax > maxExtent) {
-      maxExtent = ax;
-    }
-    if (ay > maxExtent) {
-      maxExtent = ay;
+    float qx = XMVectorGetX(q);
+    float qy = XMVectorGetY(q);
+    if (i == 0) {
+      minX = qx;
+      minY = qy;
+    } else {
+      if (qx < minX) {
+        minX = qx;
+      }
+      if (qy < minY) {
+        minY = qy;
+      }
     }
   }
-  if (maxExtent < 0.01f) {
-    maxExtent = 0.01f;
-  }
-  int ts = tileSize > 0 ? tileSize : 2048;
-  float texel = (maxExtent * 2.0f) / static_cast<float>(ts);
-  XMVECTOR cLS = XMVector3TransformCoord(c, view);
-  float sx = std::floor(XMVectorGetX(cLS) / texel) * texel;
-  float sy = std::floor(XMVectorGetY(cLS) / texel) * texel;
-  float nearP = radius * 0.5f;
-  float farP = radius * 4.0f;
+  float left = std::floor(minX / quantum) * quantum;
+  float bottom = std::floor(minY / quantum) * quantum;
+  float right = left + extent * 2.0f;
+  float top = bottom + extent * 2.0f;
+  float nearP = extent * 0.5f;
+  float farP = extent * 4.0f;
   outNear = nearP;
   outFar = farP;
-  outExtent = maxExtent;
-  XMMATRIX proj = XMMatrixOrthographicOffCenterLH(sx - maxExtent, sx + maxExtent, sy - maxExtent, sy + maxExtent, nearP, farP);
+  outExtent = extent;
+  XMMATRIX proj = XMMatrixOrthographicOffCenterLH(left, right, bottom, top, nearP, farP);
   XMMATRIX vp = view * proj;
   XMFLOAT4X4 m;
   XMStoreFloat4x4(&m, vp);

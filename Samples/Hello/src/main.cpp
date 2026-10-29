@@ -12582,6 +12582,9 @@ bool TestShadowSunMatrix() {
   if (!(cn > 0.0f && cf > cn && ce > 0.0f)) {
     return false;
   }
+  if (std::fabs((cf - cn) - ce * 3.5f) > 1e-4f) {
+    return false;
+  }
   float corners[8][3];
   Kizuri::ShadowFrustumCorners(camPos, camFwd, camRight, camUp, 1.047f, 1.7f, 1.0f, 50.0f, corners);
   for (int i = 0; i < 8; ++i) {
@@ -12597,6 +12600,89 @@ bool TestShadowSunMatrix() {
     float nz = (vp[2] * x + vp[6] * y + vp[10] * z + vp[14]) / w;
     if (nx < -1.01f || nx > 1.01f || ny < -1.01f || ny > 1.01f || nz < -0.01f || nz > 1.01f) {
       return false;
+    }
+  }
+  return true;
+}
+bool TestShadowSunTexelStability() {
+  float sunDir[3] = { 0.4f, -1.0f, 0.3f };
+  float camPos[3] = { 0.0f, 5.0f, -10.0f };
+  float camFwd[3] = { 0.0f, -0.4f, 0.9f };
+  float camRight[3] = { 1.0f, 0.0f, 0.0f };
+  float camUp[3] = { 0.0f, 0.9f, 0.4f };
+  const float fov = 1.047f;
+  const float aspect = 1.7f;
+  const float splitNear = 1.0f;
+  const float splitFar = 50.0f;
+  const int tile = 2048;
+  float vpA[16];
+  float nearA = 0.0f;
+  float farA = 0.0f;
+  float extentA = 0.0f;
+  Kizuri::ShadowSunMatrix(sunDir, camPos, camFwd, camRight, camUp, fov, aspect, splitNear, splitFar, tile, vpA, nearA, farA, extentA);
+  float corners[8][3];
+  Kizuri::ShadowFrustumCorners(camPos, camFwd, camRight, camUp, fov, aspect, splitNear, splitFar, corners);
+  float ln = std::sqrt(sunDir[0] * sunDir[0] + sunDir[1] * sunDir[1] + sunDir[2] * sunDir[2]);
+  float L[3] = { sunDir[0] / ln, sunDir[1] / ln, sunDir[2] / ln };
+  float perp[3] = { -L[2], 0.0f, L[0] };
+  float pl = std::sqrt(perp[0] * perp[0] + perp[2] * perp[2]);
+  perp[0] /= pl;
+  perp[2] /= pl;
+  float moves[3][3] = {
+    { perp[0] * 0.013f, 0.007f, perp[2] * 0.013f },
+    { perp[0] * 2.7f, -1.3f, perp[2] * 2.7f },
+    { L[0] * 3.9f, L[1] * 3.9f, L[2] * 3.9f }
+  };
+  auto projectUV = [](const float vp[16], const float p[3], float& u, float& v) {
+    float w = vp[3] * p[0] + vp[7] * p[1] + vp[11] * p[2] + vp[15];
+    if (std::fabs(w) < 1e-6f) {
+      return false;
+    }
+    float nx = (vp[0] * p[0] + vp[4] * p[1] + vp[8] * p[2] + vp[12]) / w;
+    float ny = (vp[1] * p[0] + vp[5] * p[1] + vp[9] * p[2] + vp[13]) / w;
+    u = nx * 0.5f + 0.5f;
+    v = 0.5f - ny * 0.5f;
+    return true;
+  };
+  for (int m = 0; m < 3; ++m) {
+    float movedPos[3] = { camPos[0] + moves[m][0], camPos[1] + moves[m][1], camPos[2] + moves[m][2] };
+    float vpB[16];
+    float nearB = 0.0f;
+    float farB = 0.0f;
+    float extentB = 0.0f;
+    Kizuri::ShadowSunMatrix(sunDir, movedPos, camFwd, camRight, camUp, fov, aspect, splitNear, splitFar, tile, vpB, nearB, farB, extentB);
+    if (!(nearB > 0.0f && farB > nearB && std::fabs((farB - nearB) - 3.5f * extentB) < 1e-4f)) {
+      return false;
+    }
+    if (std::fabs(extentB - extentA) > 1e-4f) {
+      return false;
+    }
+    float movedCorners[8][3];
+    Kizuri::ShadowFrustumCorners(movedPos, camFwd, camRight, camUp, fov, aspect, splitNear, splitFar, movedCorners);
+    for (int i = 0; i < 8; ++i) {
+      float w = vpB[3] * movedCorners[i][0] + vpB[7] * movedCorners[i][1] + vpB[11] * movedCorners[i][2] + vpB[15];
+      if (w <= 0.0f) {
+        return false;
+      }
+      float nx = (vpB[0] * movedCorners[i][0] + vpB[4] * movedCorners[i][1] + vpB[8] * movedCorners[i][2] + vpB[12]) / w;
+      float ny = (vpB[1] * movedCorners[i][0] + vpB[5] * movedCorners[i][1] + vpB[9] * movedCorners[i][2] + vpB[13]) / w;
+      if (nx < -1.01f || nx > 1.01f || ny < -1.01f || ny > 1.01f) {
+        return false;
+      }
+      float uA = 0.0f;
+      float vA = 0.0f;
+      float uB = 0.0f;
+      float vB = 0.0f;
+      if (!projectUV(vpA, corners[i], uA, vA) || !projectUV(vpB, corners[i], uB, vB)) {
+        return false;
+      }
+      float dx = (uB - uA) * static_cast<float>(tile);
+      float dy = (vB - vA) * static_cast<float>(tile);
+      float rx = std::floor(dx + 0.5f);
+      float ry = std::floor(dy + 0.5f);
+      if (std::fabs(dx - rx) > 2e-2f || std::fabs(dy - ry) > 2e-2f) {
+        return false;
+      }
     }
   }
   return true;
@@ -14018,6 +14104,7 @@ int main() {
   failures += Check("ShaderCompile", TestShaderCompile());
   failures += Check("ShadowSplits", TestShadowSplits());
   failures += Check("ShadowSunMatrix", TestShadowSunMatrix());
+  failures += Check("ShadowSunTexelStability", TestShadowSunTexelStability());
   failures += Check("ShadowAtlasPlan", TestShadowAtlasPlan());
   failures += Check("ShadowSpotPoint", TestShadowSpotPoint());
   failures += Check("PCSSMath", TestPCSSMath());
