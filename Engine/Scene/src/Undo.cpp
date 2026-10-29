@@ -142,8 +142,13 @@ void ComponentSnapshot::Reset() {
 }
 AddComponentCmd::AddComponentCmd(EntityId t, ComponentTypeId ty, const void* initial)
   : target(t)
-  , type(ty)
-  , initialData(initial) {
+  , type(ty) {
+  if (initial != nullptr) {
+    const ComponentTypeDesc* desc = ComponentRegistry::Instance().Get(type);
+    if (desc != nullptr) {
+      initialState.Capture(desc, initial);
+    }
+  }
 }
 bool AddComponentCmd::Apply(Scene& scene) {
   Entity* e = scene.Get(target);
@@ -165,8 +170,8 @@ bool AddComponentCmd::Apply(Scene& scene) {
   if (!AddEntityComponent(e, type)) {
     return false;
   }
-  if (initialData != nullptr) {
-    desc->copy(data, initialData);
+  if (initialState.Valid() && !initialState.Restore(data)) {
+    return false;
   }
   scene.MarkDirty();
   return true;

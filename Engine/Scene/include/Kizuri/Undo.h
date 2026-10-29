@@ -55,7 +55,7 @@ public:
 private:
   EntityId target;
   ComponentTypeId type;
-  const void* initialData = nullptr;
+  ComponentSnapshot initialState;
   ComponentSnapshot prevState;
   bool prevHas = false;
 };

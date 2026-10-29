@@ -3392,6 +3392,71 @@ bool TestComponentUndo() {
   }
   return true;
 }
+bool TestAddComponentInitialLifetime() {
+  Kizuri::Scene scene;
+  Kizuri::UndoStack undo;
+  Kizuri::EntityId id = scene.CreateEntity("initial-lifetime");
+  const Kizuri::ComponentTypeId matType = Kizuri::FindComponentType("Material");
+  if (!id.IsValid() || matType == 0xFFFFFFFFu) {
+    return false;
+  }
+  {
+    Kizuri::MaterialData initial;
+    Kizuri::MakeDefaultMaterial(initial);
+    initial.albedo[0] = 0.125f;
+    initial.albedo[1] = 0.25f;
+    initial.albedo[2] = 0.5f;
+    initial.alpha = 0.375f;
+    initial.metallic = 0.875f;
+    initial.roughness = 0.625f;
+    initial.albedoTex = "guid-initial-albedo";
+    initial.normalTex = "guid-initial-normal";
+    initial.emissive[0] = 0.75f;
+    initial.emissive[1] = 0.5f;
+    initial.emissiveStrength = 3.5f;
+    initial.unlit = true;
+    initial.alphaMode = 2;
+    initial.alphaCutoff = 0.125f;
+    std::unique_ptr<Kizuri::Command> cmd(new Kizuri::AddComponentCmd(id, matType, &initial));
+    if (!undo.Execute(std::move(cmd), scene)) {
+      return false;
+    }
+  }
+  const Kizuri::Entity* e = scene.Get(id);
+  bool ok = e != nullptr && e->hasMaterial;
+  ok = ok && std::fabs(e->material.albedo[0] - 0.125f) < 1e-6f;
+  ok = ok && std::fabs(e->material.albedo[1] - 0.25f) < 1e-6f;
+  ok = ok && std::fabs(e->material.albedo[2] - 0.5f) < 1e-6f;
+  ok = ok && std::fabs(e->material.alpha - 0.375f) < 1e-6f;
+  ok = ok && std::fabs(e->material.metallic - 0.875f) < 1e-6f;
+  ok = ok && std::fabs(e->material.roughness - 0.625f) < 1e-6f;
+  ok = ok && e->material.albedoTex == "guid-initial-albedo";
+  ok = ok && e->material.normalTex == "guid-initial-normal";
+  ok = ok && std::fabs(e->material.emissive[0] - 0.75f) < 1e-6f;
+  ok = ok && std::fabs(e->material.emissive[1] - 0.5f) < 1e-6f;
+  ok = ok && std::fabs(e->material.emissiveStrength - 3.5f) < 1e-6f;
+  ok = ok && e->material.unlit && e->material.alphaMode == 2;
+  ok = ok && std::fabs(e->material.alphaCutoff - 0.125f) < 1e-6f;
+  if (!ok || !undo.Undo(scene)) {
+    return false;
+  }
+  e = scene.Get(id);
+  if (e == nullptr || e->hasMaterial) {
+    return false;
+  }
+  if (!undo.Redo(scene)) {
+    return false;
+  }
+  e = scene.Get(id);
+  ok = e != nullptr && e->hasMaterial;
+  ok = ok && std::fabs(e->material.albedo[0] - 0.125f) < 1e-6f;
+  ok = ok && std::fabs(e->material.metallic - 0.875f) < 1e-6f;
+  ok = ok && e->material.albedoTex == "guid-initial-albedo";
+  ok = ok && e->material.normalTex == "guid-initial-normal";
+  ok = ok && std::fabs(e->material.emissiveStrength - 3.5f) < 1e-6f;
+  ok = ok && e->material.unlit && e->material.alphaMode == 2;
+  return ok;
+}
 size_t InspectorFieldSize(Kizuri::InspectorFieldKind kind) {
   switch (kind) {
   case Kizuri::InspectorFieldKind::Bool:
@@ -13618,6 +13683,7 @@ int main() {
   failures += Check("ComponentRegistry", TestComponentRegistry());
   failures += Check("SceneAllComponents", TestSceneAllComponentsRoundTrip());
   failures += Check("ComponentUndo", TestComponentUndo());
+  failures += Check("AddComponentInitialLifetime", TestAddComponentInitialLifetime());
   failures += Check("ComponentInspectorMetadata", TestComponentInspectorMetadata());
   failures += Check("ComponentInspectorConditions", TestComponentInspectorConditions());
   failures += Check("ComponentEquality", TestComponentEquality());
