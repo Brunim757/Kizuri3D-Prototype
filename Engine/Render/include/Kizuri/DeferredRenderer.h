@@ -184,6 +184,28 @@ struct ForwardDrawItem {
   uint32_t lightCount;
   uint32_t lightIndex[16];
 };
+struct VelocityDrawItem {
+  float world[16];
+  float prevWorld[16];
+  RHIBuffer vb;
+  RHIBuffer ib;
+  uint32_t start;
+  uint32_t count;
+  uint32_t boneOffset;
+  uint32_t boneCount;
+  bool hasPrev;
+  bool doubleSided;
+  int alphaMode;
+  uint32_t texFlags;
+  float alpha;
+  float alphaCutoff;
+  float lodFade;
+  float vtResidentMip;
+  RHITexture albedoTex;
+  RHITexture vtTable;
+  RHITexture vtTail;
+  DeferredUvXform uvXform;
+};
 struct GeoBatchItem {
   float world[16];
   RHIBuffer vb;
@@ -213,6 +235,8 @@ struct RenderStats {
   uint32_t occludedDraws = 0;
   uint32_t instancedDraws = 0;
   uint32_t gpuDrivenDraws = 0;
+  uint32_t velocityDraws = 0;
+  uint64_t velocityTris = 0;
   uint32_t staticBatches = 0;
   uint32_t staticSavedDraws = 0;
   uint32_t clusterMax = 0;
@@ -375,8 +399,8 @@ public:
   float TargetFrameRate() const { return framePacer.TargetFps(); }
   void SetEnvProbes(int count, const RHITexture* cubes, const float (*boxMin)[4], const float (*boxMax)[4]);
   void DrawObject(const float world[16]);
-  void DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade = 0.0f, const float* aabbMin = nullptr, const float* aabbMax = nullptr, uint32_t boneOffset = 0xFFFFFFFFu, uint32_t boneCount = 0);
-  uint32_t AddBoneMatrices(const float* matrices, uint32_t count);
+  void DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade = 0.0f, const float* aabbMin = nullptr, const float* aabbMax = nullptr, uint32_t boneOffset = 0xFFFFFFFFu, uint32_t boneCount = 0, uint64_t motionKey = 0);
+  uint32_t AddBoneMatrices(const float* matrices, uint32_t count, uint64_t motionKey = 0);
   void DrawDecal(const float world[16], const float invWorld[16], const float size[3], float fade, RHITexture tex, int matMask = 1, float matRough = 0.5f, float matMetal = 0.0f);
   void DrawDecalAtlas(const float world[16], const float invWorld[16], const float size[3], float fade, const float rect[4], int matMask = 1, float matRough = 0.5f, float matMetal = 0.0f);
   void SetDecalAtlas(RHITexture tex);
@@ -415,19 +439,44 @@ public:
   RHIRenderTarget gEmissive;
   RHIRenderTarget gF0;
   RHIRenderTarget gExtA;
+  RHIRenderTarget gVelocity = 0;
   RHIRenderTarget transSrc;
   RHIRenderTarget gDepth;
   RHIRenderTarget gViewport;
   RHIBuffer vb;
   RHIBuffer ib;
   RHIConstBuffer geoCB;
+  RHIConstBuffer velocityCB = 0;
   RHIStructBuffer boneBuf;
+  RHIStructBuffer prevBoneBuf = 0;
   RHIConstBuffer boneCB;
   RHIConstBuffer boneCBShadow;
   uint32_t boneCapacityRows;
   uint64_t boneContentHash;
   std::vector<float> bonePool;
+  std::vector<float> prevBonePool;
   std::vector<float> boneUploadScratch;
+  std::vector<float> prevBoneUploadScratch;
+  RHIVertexShader velocityVS = 0;
+  RHIVertexShader velocityVSSkinned = 0;
+  RHIPixelShader velocityPS = 0;
+  struct MotionEntry {
+    float prevWorld[16];
+    float currWorld[16];
+    uint64_t currFrame;
+    bool hasPrev;
+  };
+  struct BoneHistoryEntry {
+    std::vector<float> prevPose;
+    std::vector<float> currPose;
+    uint64_t currFrame;
+  };
+  std::unordered_map<uint64_t, MotionEntry> motionHistory;
+  std::unordered_map<uint64_t, BoneHistoryEntry> boneHistory;
+  std::unordered_map<uint32_t, bool> boneHistoryReady;
+  std::unordered_map<uint32_t, bool> boneChanged;
+  uint64_t motionFrame = 0;
+  float motionPrevVP[16] = {};
   RHIConstBuffer lightCB;
   RHIConstBuffer matCB;
   RHIConstBuffer matExtCB;
@@ -551,6 +600,7 @@ public:
   };
   std::unordered_map<uint64_t, OccGroup> occGroups;
   std::vector<GeoBatchItem> geoQueue;
+  std::vector<VelocityDrawItem> velocityQueue;
   RHIVertexShader geoVSInstanced;
   RHIInputLayout instLayout;
   RHIBuffer instVB;
@@ -564,6 +614,7 @@ public:
   void SetGeoMaterial(const DeferredMaterial& use, float lodFade);
   void DrawGeoSingle(const GeoBatchItem& item);
   void DrawGeoInstanced(uint64_t key, const std::vector<size_t>& indices);
+  void RenderVelocityPass();
   void DrawGeoGpuDriven(const std::vector<size_t>& indices);
   void FlushGeoQueue();
   void UploadBones();

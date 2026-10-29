@@ -261,18 +261,18 @@ static void StaticHex16(uint64_t v, char out[17]) {
   }
   out[16] = 0;
 }
-void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uint32_t partOff, uint32_t partCount, const DeferredMaterial* mat, float fade, const float* aabbMin, const float* aabbMax, const float* camPos, uint32_t boneOffset, uint32_t boneCount) {
+void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uint32_t partOff, uint32_t partCount, const DeferredMaterial* mat, float fade, const float* aabbMin, const float* aabbMax, const float* camPos, uint32_t boneOffset, uint32_t boneCount, uint64_t motionKey) {
   const bool skinned = boneCount > 0 && boneOffset != 0xFFFFFFFFu;
   const RHIBuffer meshVB = rec == nullptr ? 0 : (skinned ? rec->gpuVBSkinned : rec->gpuVB);
   if (skinned || !viewMeshletCull || rec == nullptr || rec->meshlets.size() < 2 || partCount == 0) {
     if (rec != nullptr) {
-      renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
+      renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount, motionKey);
     }
     return;
   }
   float planes[6][4];
   if (!renderer.GetFrustumPlanes(planes)) {
-    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
+    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount, motionKey);
     return;
   }
   uint32_t partEnd = partOff + partCount;
@@ -292,7 +292,7 @@ void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uin
     }
   }
   if (visCount == totalCount) {
-    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
+    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, partOff, partCount, mat, fade, aabbMin, aabbMax, boneOffset, boneCount, motionKey);
     return;
   }
   for (size_t r = 0; r < rec->meshlets.size(); ++r) {
@@ -306,7 +306,7 @@ void EditorApp::DrawMeshRanges(const float world[16], const MeshRecord* rec, uin
     if (!MeshletRangeVisible(world, range, planes, camPos)) {
       continue;
     }
-    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, s, e - s, mat, fade, aabbMin, aabbMax, boneOffset, boneCount);
+    renderer.DrawObjectEx(world, meshVB, rec->gpuIB, s, e - s, mat, fade, aabbMin, aabbMax, boneOffset, boneCount, motionKey);
   }
 }
 std::unordered_set<EntityId, EntityIdHash> EditorApp::SubmitStaticBatches(const float cpos[3]) {
@@ -1588,6 +1588,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
     }
     bool anyDrawn = false;
     bool waitingForMesh = false;
+    uint64_t motionKey = EntityHash64(e->id, 0);
     for (int li = 0; li < drawCount; ++li) {
       const MeshRecord* rec = assets.GetByGuid(drawGuids[li]);
       if (rec != nullptr && !rec->gpuReady) {
@@ -1604,7 +1605,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
         animators.AddEntityBones(*e, assets, renderer);
       }
       if (rec->data.parts.empty()) {
-        DrawMeshRanges(world, rec, 0, rec->gpuCount, nullptr, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos);
+        DrawMeshRanges(world, rec, 0, rec->gpuCount, nullptr, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos, 0xFFFFFFFFu, 0, motionKey);
         anyDrawn = true;
         continue;
       }
@@ -1626,7 +1627,7 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
           float vdz = world[14] - cpos[2];
           assets.UpdateVirtualTexture(useMat->vtGuid, sqrtf(vdx * vdx + vdy * vdy + vdz * vdz));
         }
-        DrawMeshRanges(world, rec, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos, bones.offset, bones.count);
+        DrawMeshRanges(world, rec, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, cpos, bones.offset, bones.count, motionKey);
       }
       anyDrawn = true;
     }

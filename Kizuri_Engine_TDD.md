@@ -202,6 +202,7 @@ A renderização é tratada como sistema de produção, não como coleção de e
 - **Sombras:** Cascaded Shadow Maps com cascatas estáveis (sem shimmer), bias automático, normal offset, PCF/PCSS, contato, sombras de point/spot, atlas, cache e resolução dinâmica com critério
 - **Iluminação:** direcional, point, spot, area/rect, IBL, reflection probes, DDGI, light layers, cookies, unidades físicas, temperatura de cor e luzes em quantidade sem queda de frame
 - **Pós-processamento:** SSAO/GTAO, SSR, SSGI, TAA com velocity buffer, FXAA, bloom, DOF, motion blur, god rays, film grain, vinheta, heat haze e fog volumétrico — todos com ordem, qualidade e custo documentados
+- **Contrato do TAA:** pixels estáticos reprojetam pela posição reconstruída do depth buffer usando as matrizes sem jitter (`PrevVPU`/`CurrVPU`); objetos com transform ou ossos alterados entram num velocity buffer separado, desenhado contra o `gDepth` com `LessEqual` e consumido no slot 3 do resolve. O velocity pass reproduz alpha cutout, VT, dither de LOD e double-sided para não gravar movimento em pixels que o G-buffer descartou. O histórico é rejeitado por profundidade e por ausência de pose anterior, e o primeiro frame de um objeto resolve no frame atual. O passe só roda com TAA ativo e o alvo é limpo uma vez por frame; objeto parado não entra no buffer.
 - **Materiais:** PBR completo e correto (energia, Fresnel, normal maps, ORM, alpha modes, double-sided), clearcoat, sheen, transmission, volume, anisotropia, iridescência, dispersão, layered materials, decals, detail maps, POM, tessellation e virtual textures
 - **Geometria:** meshlets, GPU culling, oclusão, LOD, instancing, static batching e streaming; malhas skinned ficam fora de meshlets, LOD bake, instancing, GPU culling e static batching
 - **Cel shading:** modo de material e de câmera com rampa de iluminação, contornos, especular estilizado, sombras pintadas e controle de intensidade; não substitui o PBR, convive com ele
@@ -542,7 +543,7 @@ Esta seção documenta armadilhas de baixo nível identificadas por revisão té
 
 - **Cor inconsistente entre Editor e jogo**: sRGB/linear, exposição ou tonemap diferentes. **Mitigação**: um único workflow de cor, calibração por cena de referência e teste de imagem.
 - **Flicker de luz/sombra**: bias, precisão, cascatas ou jitter. **Mitigação**: bias automático, normal offset, cascatas estabilizadas, cache de sombra e teste temporal com câmera parada e em movimento.
-- **Ghosting/smearing de TAA**: falta de velocity por objeto ou histórico inválido. **Mitigação**: velocity buffer correto, rejeição de histórico por profundidade/normal e validação em objetos animados.
+- **Ghosting/smearing de TAA**: falta de velocity por objeto ou histórico inválido. **Mitigação**: velocity buffer por objeto e por osso com histórico de transform e pose, rejeição de histórico por profundidade, fundo estático reprojetado de forma analítica sem jitter e validação em objetos animados.
 - **Shader permutations fora de controle**: tempo de compilação e variantes inconsistentes. **Mitigação**: chaves explícitas, cache de shaders, compilação assíncrona e inventário de variantes.
 
 ---

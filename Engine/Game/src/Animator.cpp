@@ -352,7 +352,8 @@ bool AnimatorRuntime::AddEntityBones(const Entity& entity, const AssetDatabase& 
       continue;
     }
     const uint32_t count = static_cast<uint32_t>(skin.skeleton.joints.size());
-    const uint32_t offset = renderer.AddBoneMatrices(bones.data(), count);
+    uint64_t motionKey = EntityHash64(entity.id, static_cast<uint32_t>(s));
+    const uint32_t offset = renderer.AddBoneMatrices(bones.data(), count, motionKey);
     if (offset == 0xFFFFFFFFu) {
       continue;
     }

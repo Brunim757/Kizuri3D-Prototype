@@ -1111,7 +1111,7 @@ public:
     }
   }
   void SetDepthStencilState(const RHIDepthStencil& ds) override {
-    if (CC()->hasDS && CC()->curDS.depthEnable == ds.depthEnable && CC()->curDS.depthWrite == ds.depthWrite) {
+    if (CC()->hasDS && CC()->curDS.depthEnable == ds.depthEnable && CC()->curDS.depthWrite == ds.depthWrite && CC()->curDS.func == ds.func) {
       Note(true);
       return;
     }
@@ -1122,6 +1122,15 @@ public:
     d.DepthEnable = ds.depthEnable ? TRUE : FALSE;
     d.DepthWriteMask = ds.depthWrite ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
     d.DepthFunc = D3D11_COMPARISON_LESS;
+    if (ds.func == RHIDepthFunc::LessEqual) {
+      d.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    } else if (ds.func == RHIDepthFunc::Equal) {
+      d.DepthFunc = D3D11_COMPARISON_EQUAL;
+    } else if (ds.func == RHIDepthFunc::GreaterEqual) {
+      d.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
+    } else if (ds.func == RHIDepthFunc::Always) {
+      d.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    }
     d.StencilEnable = FALSE;
     d.StencilReadMask = 0xFF;
     d.StencilWriteMask = 0xFF;

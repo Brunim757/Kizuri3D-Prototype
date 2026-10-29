@@ -804,6 +804,7 @@ void GameWorld::Render(float alpha) {
       continue;
     }
     ComposeMatrix(e->transform, world);
+    uint64_t motionKey = EntityHash64(e->id, 0);
     std::string drawGuids[2];
     float drawFades[2];
     int drawCount = 1;
@@ -824,7 +825,7 @@ void GameWorld::Render(float alpha) {
         DeferredMaterial material;
         const DeferredMaterial* useMat = FillDeferredForMesh(assets, *e, rec->data, material) ? &material : nullptr;
         UpdateVirtualTextureForDraw(assets, useMat, world, camPos);
-        renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax);
+        renderer.DrawObjectEx(world, rec->gpuVB, rec->gpuIB, 0, rec->gpuCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, 0xFFFFFFFFu, 0, motionKey);
         continue;
       }
       if (!rec->data.skins.empty()) {
@@ -851,7 +852,7 @@ void GameWorld::Render(float alpha) {
           }
           drawVB = rec->gpuVBSkinned;
         }
-        renderer.DrawObjectEx(world, drawVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, bones.offset, bones.count);
+        renderer.DrawObjectEx(world, drawVB, rec->gpuIB, part.indexOffset, part.indexCount, useMat, drawFades[li], rec->data.aabbMin, rec->data.aabbMax, bones.offset, bones.count, motionKey);
       }
     }
   }

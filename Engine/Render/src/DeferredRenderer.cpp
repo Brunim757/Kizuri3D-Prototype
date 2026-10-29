@@ -13,6 +13,15 @@ struct GeoConstants {
   float world[16];
   float view[16];
   float proj[16];
+  float prevWorld[16] = {};
+  float prevViewProj[16] = {};
+  float motion[4] = {};
+};
+struct VelocityConstants {
+  float misc[4];
+  float uvA[4];
+  float uvB[4];
+  float extra[4];
 };
 struct LightConstants {
   float camPos[4];
@@ -239,12 +248,15 @@ DeferredRenderer::DeferredRenderer()
   , gEmissive(0)
   , gF0(0)
   , gExtA(0)
+  , gVelocity(0)
   , gDepth(0)
   , gViewport(0)
   , vb(0)
   , ib(0)
   , geoCB(0)
+  , velocityCB(0)
   , boneBuf(0)
+  , prevBoneBuf(0)
   , boneCB(0)
   , boneCBShadow(0)
   , boneCapacityRows(0)
@@ -677,6 +689,8 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   std::string dir(shaderDir);
   std::string geoVSPath = dir + "/GeometryVS.hlsl";
   std::string geoPSPath = dir + "/GeometryPS.hlsl";
+  std::string velocityVSPath = dir + "/VelocityVS.hlsl";
+  std::string velocityPSPath = dir + "/VelocityPS.hlsl";
   std::string lightVSPath = dir + "/LightingVS.hlsl";
   std::string lightPSPath = dir + "/LightingPS.hlsl";
   std::string depthVSPath = dir + "/DepthVS.hlsl";
@@ -1009,6 +1023,12 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   if (geoVSSkinned == 0 || depthVSSkinned == 0 || uvVSSkinned == 0) {
     return false;
   }
+  velocityVS = LoadVertexShader(velocityVSPath.c_str(), "main");
+  velocityVSSkinned = LoadVertexShader(velocityVSPath.c_str(), "SkinnedMain");
+  velocityPS = LoadPixelShader(velocityPSPath.c_str());
+  if (velocityVS == 0 || velocityVSSkinned == 0 || velocityPS == 0) {
+    return false;
+  }
   skinnedLayout = rhi->CreateInputLayoutPNUTSkinned(geoVSSkinned);
   if (skinnedLayout == 0) {
     return false;
@@ -1027,6 +1047,9 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   SsrConstants sc;
   std::memset(&sc, 0, sizeof(sc));
   geoCB = rhi->CreateConstantBuffer(sizeof(GeoConstants), &gc);
+  VelocityConstants velocityInit;
+  std::memset(&velocityInit, 0, sizeof(velocityInit));
+  velocityCB = rhi->CreateConstantBuffer(sizeof(velocityInit), &velocityInit);
   uint32_t boneInit[4] = { 0, 0, 0, 0 };
   boneCB = rhi->CreateConstantBuffer(sizeof(boneInit), boneInit);
   boneCBShadow = rhi->CreateConstantBuffer(sizeof(boneInit), boneInit);
@@ -1079,7 +1102,7 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   bloomCB = rhi->CreateConstantBuffer(sizeof(bloomInit), &bloomInit);
   fsrCB = rhi->CreateConstantBuffer(sizeof(fsrInit), &fsrInit);
   ssaoCB = rhi->CreateConstantBuffer(sizeof(ssaoInit), &ssaoInit);
-  if (geoCB == 0 || lightCB == 0 || matCB == 0 || matExtCB == 0) {
+  if (geoCB == 0 || velocityCB == 0 || lightCB == 0 || matCB == 0 || matExtCB == 0) {
     return false;
   }
   if (bloomCB == 0 || fsrCB == 0 || ssaoCB == 0) {
@@ -1349,9 +1372,17 @@ void DeferredRenderer::Shutdown() {
     rhi->DestroyConstantBuffer(geoCB);
     geoCB = 0;
   }
+  if (velocityCB != 0) {
+    rhi->DestroyConstantBuffer(velocityCB);
+    velocityCB = 0;
+  }
   if (boneBuf != 0) {
     rhi->DestroyStructBuffer(boneBuf);
     boneBuf = 0;
+  }
+  if (prevBoneBuf != 0) {
+    rhi->DestroyStructBuffer(prevBoneBuf);
+    prevBoneBuf = 0;
   }
   if (boneCB != 0) {
     rhi->DestroyConstantBuffer(boneCB);
@@ -1364,7 +1395,13 @@ void DeferredRenderer::Shutdown() {
   boneCapacityRows = 0;
   boneContentHash = 0;
   bonePool.clear();
+  prevBonePool.clear();
   boneUploadScratch.clear();
+  prevBoneUploadScratch.clear();
+  boneHistory.clear();
+  boneHistoryReady.clear();
+  boneChanged.clear();
+  motionHistory.clear();
   if (lightCB != 0) {
     rhi->DestroyConstantBuffer(lightCB);
     lightCB = 0;
@@ -3430,6 +3467,28 @@ void DeferredRenderer::BeginObjects(const float view[16], const float proj[16]) 
   std::memcpy(lastViewU, view, sizeof(lastViewU));
   std::memcpy(lastProjU, proj, sizeof(lastProjU));
   ++taaFrame;
+  ++motionFrame;
+  boneHistoryReady.clear();
+  boneChanged.clear();
+  MulViewProj(prevViewU, prevProjU, motionPrevVP);
+  if (motionHistory.size() > 8192) {
+    for (auto it = motionHistory.begin(); it != motionHistory.end();) {
+      if (it->second.currFrame + 8 < motionFrame) {
+        it = motionHistory.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  if (boneHistory.size() > 8192) {
+    for (auto it = boneHistory.begin(); it != boneHistory.end();) {
+      if (it->second.currFrame + 8 < motionFrame) {
+        it = boneHistory.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
   if (taaOn && w > 0 && h > 0) {
     float jx = (Halton(static_cast<int>(taaFrame % 8) + 1, 2) - 0.5f) * 2.0f / static_cast<float>(w);
     float jy = (Halton(static_cast<int>(taaFrame % 8) + 1, 3) - 0.5f) * 2.0f / static_cast<float>(h);
@@ -3457,6 +3516,7 @@ void DeferredRenderer::BeginObjects(const float view[16], const float proj[16]) 
   stats.gpuPostMs = keepPost;
   stats.gpuValid = keepValid;
   bonePool.clear();
+  prevBonePool.clear();
   boneContentHash = 0;
   frameStart = std::chrono::steady_clock::now();
   SetupGeometryPass();
@@ -4030,6 +4090,7 @@ void DeferredRenderer::BeginEnvFace(int face, const float view[16], const float 
   }
   captureMode = true;
   bonePool.clear();
+  prevBonePool.clear();
   boneContentHash = 0;
   std::memcpy(lastView, view, sizeof(lastView));
   std::memcpy(lastProj, proj, sizeof(lastProj));
@@ -4046,6 +4107,7 @@ void DeferredRenderer::SetupGeometryPass() {
   decalDraws.clear();
   forwardDraws.clear();
   geoQueue.clear();
+  velocityQueue.clear();
   shadowMapsValid = false;
   ssaoValid = false;
   ssrValid = false;
@@ -4154,7 +4216,7 @@ void DeferredRenderer::DrawObject(const float world[16]) {
   gi.bmax[2] = 1.0f;
   geoQueue.push_back(gi);
 }
-void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade, const float* aabbMin, const float* aabbMax, uint32_t boneOffset, uint32_t boneCount) {
+void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuffer ib, uint32_t start, uint32_t count, const DeferredMaterial* mat, float lodFade, const float* aabbMin, const float* aabbMax, uint32_t boneOffset, uint32_t boneCount, uint64_t motionKey) {
   if (!begun || world == nullptr || vb == 0 || ib == 0 || count == 0) {
     return;
   }
@@ -4164,6 +4226,48 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
     useBoneOffset = boneOffset;
     useBoneCount = boneCount;
   }
+  float prevWorld[16];
+  std::memcpy(prevWorld, world, sizeof(prevWorld));
+  bool transformPrev = motionKey != 0;
+  bool worldMoved = false;
+  if (motionKey != 0) {
+    auto it = motionHistory.find(motionKey);
+    if (it == motionHistory.end()) {
+      MotionEntry entry;
+      std::memcpy(entry.prevWorld, world, sizeof(entry.prevWorld));
+      std::memcpy(entry.currWorld, world, sizeof(entry.currWorld));
+      entry.currFrame = motionFrame;
+      entry.hasPrev = false;
+      motionHistory[motionKey] = entry;
+      transformPrev = false;
+    } else {
+      MotionEntry& entry = it->second;
+      if (entry.currFrame + 1 == motionFrame) {
+        std::memcpy(entry.prevWorld, entry.currWorld, sizeof(entry.prevWorld));
+        entry.hasPrev = true;
+      } else if (entry.currFrame != motionFrame) {
+        entry.hasPrev = false;
+      }
+      transformPrev = entry.hasPrev;
+      if (transformPrev) {
+        std::memcpy(prevWorld, entry.prevWorld, sizeof(prevWorld));
+        worldMoved = std::memcmp(prevWorld, world, sizeof(prevWorld)) != 0;
+      }
+      std::memcpy(entry.currWorld, world, sizeof(entry.currWorld));
+      entry.currFrame = motionFrame;
+    }
+  }
+  bool bonesPrev = false;
+  bool bonesMoved = false;
+  if (useBoneCount > 0) {
+    auto bp = boneHistoryReady.find(useBoneOffset);
+    bonesPrev = bp != boneHistoryReady.end() && bp->second;
+    auto bc = boneChanged.find(useBoneOffset);
+    bonesMoved = bc != boneChanged.end() && bc->second;
+  }
+  const bool skinned = useBoneCount > 0;
+  const bool hasPrev = transformPrev && (!skinned || bonesPrev);
+  const bool motion = hasPrev && (worldMoved || (skinned && bonesMoved));
   ShadowDrawItem item;
   std::memcpy(item.world, world, sizeof(item.world));
   item.vb = vb;
@@ -4177,6 +4281,30 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
     return;
   }
   const DeferredMaterial& use = (mat != nullptr) ? *mat : material;
+  if (motion) {
+    VelocityDrawItem vi;
+    std::memcpy(vi.world, world, sizeof(vi.world));
+    std::memcpy(vi.prevWorld, prevWorld, sizeof(vi.prevWorld));
+    vi.vb = vb;
+    vi.ib = ib;
+    vi.start = start;
+    vi.count = count;
+    vi.boneOffset = useBoneOffset;
+    vi.boneCount = useBoneCount;
+    vi.hasPrev = true;
+    vi.doubleSided = use.doubleSided;
+    vi.alphaMode = use.alphaMode;
+    vi.texFlags = use.texFlags;
+    vi.alpha = use.alpha;
+    vi.alphaCutoff = use.alphaCutoff;
+    vi.albedoTex = use.albedoTex;
+    vi.vtTable = use.vtTable;
+    vi.vtTail = use.vtTail;
+    vi.lodFade = lodFade < 0.0f ? 0.0f : (lodFade > 1.0f ? 1.0f : lodFade);
+    vi.vtResidentMip = use.vtResidentMip;
+    vi.uvXform = use.xforms[0];
+    velocityQueue.push_back(vi);
+  }
   if (use.transmission > 0.0f || use.alphaMode == 2) {
     ForwardDrawItem fwd;
     std::memcpy(fwd.world, world, sizeof(fwd.world));
@@ -4219,7 +4347,7 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
   }
   geoQueue.push_back(gi);
 }
-uint32_t DeferredRenderer::AddBoneMatrices(const float* matrices, uint32_t count) {
+uint32_t DeferredRenderer::AddBoneMatrices(const float* matrices, uint32_t count, uint64_t motionKey) {
   if (!begun || matrices == nullptr || count == 0) {
     return 0xFFFFFFFFu;
   }
@@ -4227,7 +4355,40 @@ uint32_t DeferredRenderer::AddBoneMatrices(const float* matrices, uint32_t count
   if (offset + static_cast<uint64_t>(count) > 65536ull) {
     return 0xFFFFFFFFu;
   }
-  bonePool.insert(bonePool.end(), matrices, matrices + static_cast<size_t>(count) * 16ull);
+  const size_t floatCount = static_cast<size_t>(count) * 16ull;
+  const float* prev = matrices;
+  bool hasPrev = false;
+  bool changed = true;
+  if (motionKey != 0) {
+    auto it = boneHistory.find(motionKey);
+    if (it != boneHistory.end()) {
+      BoneHistoryEntry& h = it->second;
+      if (h.currFrame + 1 == motionFrame && h.currPose.size() == floatCount) {
+        h.prevPose.swap(h.currPose);
+        hasPrev = true;
+      } else if (h.currFrame == motionFrame && h.prevPose.size() == floatCount) {
+        hasPrev = true;
+      } else {
+        h.prevPose.clear();
+      }
+      if (hasPrev) {
+        prev = h.prevPose.data();
+      }
+      changed = !hasPrev || std::memcmp(prev, matrices, floatCount * sizeof(float)) != 0;
+      h.currPose.assign(matrices, matrices + floatCount);
+      h.currFrame = motionFrame;
+    } else {
+      BoneHistoryEntry h;
+      h.prevPose.clear();
+      h.currPose.assign(matrices, matrices + floatCount);
+      h.currFrame = motionFrame;
+      boneHistory[motionKey] = h;
+    }
+  }
+  bonePool.insert(bonePool.end(), matrices, matrices + floatCount);
+  prevBonePool.insert(prevBonePool.end(), prev, prev + floatCount);
+  boneHistoryReady[static_cast<uint32_t>(offset)] = hasPrev;
+  boneChanged[static_cast<uint32_t>(offset)] = changed;
   return static_cast<uint32_t>(offset);
 }
 void DeferredRenderer::UploadBones() {
@@ -4249,7 +4410,7 @@ void DeferredRenderer::UploadBones() {
     return;
   }
   uint32_t rows = static_cast<uint32_t>(rows64);
-  if (boneBuf == 0 || boneCapacityRows < rows) {
+  if (boneBuf == 0 || prevBoneBuf == 0 || boneCapacityRows < rows) {
     uint64_t cap = boneCapacityRows == 0 ? 256ull : static_cast<uint64_t>(boneCapacityRows) * 2ull;
     if (cap < rows) {
       cap = rows;
@@ -4258,19 +4419,37 @@ void DeferredRenderer::UploadBones() {
       cap = 262144ull;
     }
     RHIStructBuffer buf = rhi->CreateStructBuffer(static_cast<uint32_t>(cap), 16, nullptr);
-    if (buf == 0) {
+    RHIStructBuffer prevBuf = rhi->CreateStructBuffer(static_cast<uint32_t>(cap), 16, nullptr);
+    if (buf == 0 || prevBuf == 0) {
+      if (buf != 0) {
+        rhi->DestroyStructBuffer(buf);
+      }
+      if (prevBuf != 0) {
+        rhi->DestroyStructBuffer(prevBuf);
+      }
       boneContentHash = 0;
       return;
     }
     if (boneBuf != 0) {
       rhi->DestroyStructBuffer(boneBuf);
     }
+    if (prevBoneBuf != 0) {
+      rhi->DestroyStructBuffer(prevBoneBuf);
+    }
     boneBuf = buf;
+    prevBoneBuf = prevBuf;
     boneCapacityRows = static_cast<uint32_t>(cap);
   }
   boneUploadScratch.resize(static_cast<size_t>(boneCapacityRows) * 4ull, 0.0f);
   std::memcpy(boneUploadScratch.data(), bonePool.data(), bonePool.size() * sizeof(float));
   if (!rhi->UpdateStructBuffer(boneBuf, boneUploadScratch.data(), boneUploadScratch.size() * sizeof(float))) {
+    boneContentHash = 0;
+  }
+  prevBoneUploadScratch.resize(static_cast<size_t>(boneCapacityRows) * 4ull, 0.0f);
+  if (!prevBonePool.empty()) {
+    std::memcpy(prevBoneUploadScratch.data(), prevBonePool.data(), prevBonePool.size() * sizeof(float));
+  }
+  if (!rhi->UpdateStructBuffer(prevBoneBuf, prevBoneUploadScratch.data(), prevBoneUploadScratch.size() * sizeof(float))) {
     boneContentHash = 0;
   }
 }
@@ -4731,6 +4910,117 @@ void DeferredRenderer::FlushGeoQueue() {
   rhi->SetTopology(RHITopology::TriangleList);
   rhi->SetHullShader(0);
   rhi->SetDomainShader(0);
+}
+void DeferredRenderer::RenderVelocityPass() {
+  if (rhi == nullptr) {
+    return;
+  }
+  if (!taaOn || captureMode || gVelocity == 0 || velocityVS == 0 || velocityVSSkinned == 0 || velocityPS == 0) {
+    velocityQueue.clear();
+    return;
+  }
+  rhi->BeginEvent("Velocity");
+  rhi->SetRenderTargets(1, &gVelocity, gDepth);
+  RHIViewport vp;
+  vp.x = viewX;
+  vp.y = viewY;
+  vp.w = static_cast<float>(w);
+  vp.h = static_cast<float>(h);
+  vp.minD = 0.0f;
+  vp.maxD = 1.0f;
+  rhi->SetViewport(vp);
+  rhi->SetTopology(RHITopology::TriangleList);
+  RHIRasterizer rs;
+  rs.cull = RHICull::Back;
+  rs.fill = RHIFill::Solid;
+  rs.frontCCW = false;
+  rs.slopeBias = 0.0f;
+  rhi->SetRasterizerState(rs);
+  RHIDepthStencil ds;
+  ds.depthEnable = true;
+  ds.depthWrite = false;
+  ds.func = RHIDepthFunc::LessEqual;
+  rhi->SetDepthStencilState(ds);
+  RHIBlend blend;
+  blend.enable = false;
+  rhi->SetBlendState(blend);
+  rhi->ClearRenderTarget(gVelocity, 0.0f, 0.0f, 0.0f, 0.0f);
+  if (velocityQueue.empty()) {
+    ds.depthWrite = true;
+    ds.func = RHIDepthFunc::Less;
+    rhi->SetDepthStencilState(ds);
+    rhi->EndEvent();
+    return;
+  }
+  rhi->SetPixelShader(velocityPS);
+  rhi->SetVertexConstantBuffer(0, geoCB);
+  rhi->SetPixelConstantBuffer(0, velocityCB);
+  rhi->SetPixelSampler(0, geoSampler);
+  for (size_t i = 0; i < velocityQueue.size(); ++i) {
+    const VelocityDrawItem& item = velocityQueue[i];
+    bool skinned = item.boneCount > 0 && item.boneOffset != 0xFFFFFFFFu;
+    RHIRasterizer irs;
+    irs.cull = item.doubleSided ? RHICull::None : RHICull::Back;
+    irs.fill = RHIFill::Solid;
+    irs.frontCCW = false;
+    irs.slopeBias = 0.0f;
+    rhi->SetRasterizerState(irs);
+    GeoConstants gc;
+    std::memcpy(gc.world, item.world, sizeof(gc.world));
+    std::memcpy(gc.view, lastView, sizeof(gc.view));
+    std::memcpy(gc.proj, lastProj, sizeof(gc.proj));
+    std::memcpy(gc.prevWorld, item.prevWorld, sizeof(gc.prevWorld));
+    std::memcpy(gc.prevViewProj, motionPrevVP, sizeof(gc.prevViewProj));
+    gc.motion[0] = item.hasPrev ? 1.0f : 0.0f;
+    rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
+    VelocityConstants vc;
+    std::memset(&vc, 0, sizeof(vc));
+    vc.misc[0] = item.alphaCutoff;
+    vc.misc[1] = static_cast<float>(item.alphaMode);
+    std::memcpy(&vc.misc[2], &item.texFlags, sizeof(item.texFlags));
+    vc.misc[3] = item.alpha;
+    vc.uvA[0] = item.uvXform.offsetU;
+    vc.uvA[1] = item.uvXform.offsetV;
+    vc.uvA[2] = item.uvXform.scaleU;
+    vc.uvA[3] = item.uvXform.scaleV;
+    vc.uvB[0] = item.uvXform.rotation;
+    vc.uvB[1] = static_cast<float>(item.uvXform.uvSet);
+    vc.extra[0] = item.lodFade;
+    vc.extra[1] = item.vtResidentMip;
+    rhi->UpdateConstantBuffer(velocityCB, &vc, sizeof(vc));
+    rhi->SetPixelTexture2D(0, item.albedoTex != 0 ? item.albedoTex : neutralAlbedo);
+    rhi->SetPixelTexture2D(1, item.vtTail != 0 ? item.vtTail : neutralBlack);
+    rhi->SetPixelTexture2D(2, item.vtTable != 0 ? item.vtTable : neutralBlack);
+    rhi->SetVertexShader(skinned ? velocityVSSkinned : velocityVS);
+    rhi->SetInputLayout(skinned ? skinnedLayout : layout);
+    if (skinned) {
+      uint32_t boneData[4] = { item.boneOffset, 0, 0, 0 };
+      rhi->UpdateConstantBuffer(boneCB, boneData, sizeof(boneData));
+      rhi->SetVertexConstantBuffer(1, boneCB);
+      rhi->SetVertexSRV(0, boneBuf);
+      rhi->SetVertexSRV(1, prevBoneBuf);
+    } else {
+      rhi->SetVertexSRV(0, 0);
+      rhi->SetVertexSRV(1, 0);
+    }
+    rhi->SetVertexBuffer(item.vb, 0);
+    rhi->SetIndexBuffer(item.ib);
+    rhi->DrawIndexed(item.count, item.start, 0);
+    ++stats.velocityDraws;
+    stats.velocityTris += item.count / 3;
+  }
+  rhi->SetVertexSRV(0, 0);
+  rhi->SetVertexSRV(1, 0);
+  rhi->SetPixelTexture2D(0, 0);
+  rhi->SetPixelTexture2D(1, 0);
+  rhi->SetPixelTexture2D(2, 0);
+  rs.cull = RHICull::Back;
+  rhi->SetRasterizerState(rs);
+  ds.depthWrite = true;
+  ds.func = RHIDepthFunc::Less;
+  rhi->SetDepthStencilState(ds);
+  velocityQueue.clear();
+  rhi->EndEvent();
 }
 void DeferredRenderer::DrawDecal(const float world[16], const float invWorld[16], const float size[3], float fade, RHITexture tex, int matMask, float matRough, float matMetal) {
   if (!begun || world == nullptr || invWorld == nullptr || size == nullptr || tex == 0) {
@@ -5492,6 +5782,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
     }
   }
   FlushGeoQueue();
+  RenderVelocityPass();
   if (!captureMode) {
     if (shadowKicked) {
       {
@@ -6363,7 +6654,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       }
       float sp[3] = { camPos[0] + sdir[0] * 1000.0f, camPos[1] + sdir[1] * 1000.0f, camPos[2] + sdir[2] * 1000.0f };
       float gvp[16];
-      MulViewProj(lastView, lastProj, gvp);
+      MulViewProj(lastViewU, lastProjU, gvp);
       float cx = sp[0] * gvp[0] + sp[1] * gvp[4] + sp[2] * gvp[8] + gvp[12];
       float cy = sp[0] * gvp[1] + sp[1] * gvp[5] + sp[2] * gvp[9] + gvp[13];
       float cw = sp[0] * gvp[3] + sp[1] * gvp[7] + sp[2] * gvp[11] + gvp[15];
@@ -6487,10 +6778,12 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       rhi->SetPixelTexture(0, filmSrc);
       rhi->SetPixelTexture(1, hist);
       rhi->SetPixelTexture(2, gPosition);
+      rhi->SetPixelTexture(3, gVelocity);
       NoteFullscreen();
       rhi->SetPixelTexture(0, 0);
       rhi->SetPixelTexture(1, 0);
       rhi->SetPixelTexture(2, 0);
+      rhi->SetPixelTexture(3, 0);
       rhi->SetPixelSampler(1, 0);
       taaRead = tout;
       taaWrite = tout;
@@ -6679,6 +6972,7 @@ bool DeferredRenderer::CreateTargets() {
   gEmissive = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA16F);
   gF0 = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA8_UNORM);
   gExtA = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA8_UNORM);
+  gVelocity = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA16F);
   transSrc = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA8_UNORM);
   gDepth = rhi->CreateRenderTarget(w, h, RHIFormat::D24S8);
   gViewport = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA16F);
@@ -6753,7 +7047,7 @@ bool DeferredRenderer::CreateTargets() {
   }
   sssBlurA = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA16F);
   sssBlurB = rhi->CreateRenderTarget(w, h, RHIFormat::RGBA16F);
-  return gAlbedo != 0 && gNormalRough != 0 && gMetallic != 0 && gPosition != 0 && gLightmap != 0 && gEmissive != 0 && gF0 != 0 && gExtA != 0 && transSrc != 0 && gDepth != 0 && gViewport != 0 && gLight != 0 && bloomA != 0 && bloomB != 0 &&   fsrA != 0 && fsrOut != 0 && ssaoA != 0 && ssaoB != 0 && bentA != 0 && ssrA != 0 && ssrTmp != 0 && ssrHist != 0 && ssrHistB != 0 && contactA != 0 && filmA != 0 && ssgiA != 0 && ssgiB != 0 && fxaaA != 0 && gradeA != 0 && taaA != 0 && taaB != 0 && taaSharpA != 0 && lumA != 0 && lumB != 0 && expA != 0 && expB != 0 && godA != 0 && godHalfA != 0 && godDepthA != 0 && debugA != 0 && overdrawA != 0 && uvA != 0 && hzbA[0] != 0 && hzbA[1] != 0 && hzbA[2] != 0 && hzbA[3] != 0 && hzbA[4] != 0 && sssBlurA != 0 && sssBlurB != 0;
+  return gAlbedo != 0 && gNormalRough != 0 && gMetallic != 0 && gPosition != 0 && gLightmap != 0 && gEmissive != 0 && gF0 != 0 && gExtA != 0 && gVelocity != 0 && transSrc != 0 && gDepth != 0 && gViewport != 0 && gLight != 0 && bloomA != 0 && bloomB != 0 &&   fsrA != 0 && fsrOut != 0 && ssaoA != 0 && ssaoB != 0 && bentA != 0 && ssrA != 0 && ssrTmp != 0 && ssrHist != 0 && ssrHistB != 0 && contactA != 0 && filmA != 0 && ssgiA != 0 && ssgiB != 0 && fxaaA != 0 && gradeA != 0 && taaA != 0 && taaB != 0 && taaSharpA != 0 && lumA != 0 && lumB != 0 && expA != 0 && expB != 0 && godA != 0 && godHalfA != 0 && godDepthA != 0 && debugA != 0 && overdrawA != 0 && uvA != 0 && hzbA[0] != 0 && hzbA[1] != 0 && hzbA[2] != 0 && hzbA[3] != 0 && hzbA[4] != 0 && sssBlurA != 0 && sssBlurB != 0;
 }
 void DeferredRenderer::DestroyTargets() {
   if (rhi == nullptr) {
@@ -6790,6 +7084,10 @@ void DeferredRenderer::DestroyTargets() {
   if (gExtA != 0) {
     rhi->DestroyRenderTarget(gExtA);
     gExtA = 0;
+  }
+  if (gVelocity != 0) {
+    rhi->DestroyRenderTarget(gVelocity);
+    gVelocity = 0;
   }
   if (transSrc != 0) {
     rhi->DestroyRenderTarget(transSrc);

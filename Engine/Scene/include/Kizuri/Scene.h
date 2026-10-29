@@ -15,6 +15,16 @@ struct EntityId {
 struct EntityIdHash {
   size_t operator()(const EntityId& e) const { return (static_cast<size_t>(e.index) * 1315423911u) ^ static_cast<size_t>(e.generation); }
 };
+inline uint64_t EntityHash64(const EntityId& e, uint32_t part) {
+  uint64_t h = 1469598103934665603ull;
+  h ^= static_cast<uint64_t>(e.index);
+  h *= 1099511628211ull;
+  h ^= static_cast<uint64_t>(e.generation);
+  h *= 1099511628211ull;
+  h ^= static_cast<uint64_t>(part) + 1ull;
+  h *= 1099511628211ull;
+  return h == 0 ? 1ull : h;
+}
 struct Transform {
   float position[3];
   float rotation[3];

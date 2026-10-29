@@ -5549,10 +5549,10 @@ bool TestPBR() {
 }
 bool TestShaderFiles() {
   const char* dirs[3] = { "Shaders", "Samples/../Shaders", "build/bin/Release/Shaders" };
-  const char* files[5] = { "GeometryVS.hlsl", "GeometryPS.hlsl", "LightingVS.hlsl", "LightingPS.hlsl", "DepthVS.hlsl" };
+  const char* files[7] = { "GeometryVS.hlsl", "GeometryPS.hlsl", "LightingVS.hlsl", "LightingPS.hlsl", "DepthVS.hlsl", "VelocityVS.hlsl", "VelocityPS.hlsl" };
   for (int d = 0; d < 3; ++d) {
     bool allOk = true;
-    for (int f = 0; f < 5; ++f) {
+    for (int f = 0; f < 7; ++f) {
       char path[512];
       std::snprintf(path, sizeof(path), "%s/%s", dirs[d], files[f]);
       FILE* fp = std::fopen(path, "rb");
@@ -8265,31 +8265,35 @@ bool TestTaaReprojection() {
   if (!LoadShaderText("TaaPS.hlsl", src)) {
     return false;
   }
-  const char* required[12] = {
+  const char* required[15] = {
     "row_major float4x4 PrevVPU;",
     "row_major float4x4 CurrVPU;",
     "float4 CamPos;",
+    "Texture2D VelocityTX : register(t3);",
+    "float4 vel = VelocityTX.Sample(PointSampler, pin.uv);",
+    "histUv = vel.xy;",
     "float3 sdir = normalize(sray);",
     "float st = cdepth / max(dot(sdir, CamFwd.xyz), 1e-4);",
     "reprojP = CamPos.xyz + sdir * st;",
     "float4 ppPrevU = mul(float4(reprojP, 1.0), PrevVPU);",
     "float4 ppCurrU = mul(float4(reprojP, 1.0), CurrVPU);",
     "histUv = ppPrevU.xy / ppPrevU.w",
-    "motionPx = (prevUv - currUv)",
+    "motionPx = (histUv - currUv)",
     "HistoryTX.Sample(LinearSampler, histUv)",
     "float2 sndc = float2(pin.uv.x * 2.0 - 1.0, 1.0 - pin.uv.y * 2.0);"
   };
-  for (int i = 0; i < 12; ++i) {
+  for (int i = 0; i < 15; ++i) {
     if (src.find(required[i]) == std::string::npos) {
       return false;
     }
   }
-  const char* forbidden[3] = {
+  const char* forbidden[4] = {
     "float4x4 PrevVP;",
     "mul(float4(reprojP, 1.0), PrevVP)",
-    "float3 reprojP = wpos;"
+    "float3 reprojP = wpos;",
+    "float2 prevUv"
   };
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 4; ++i) {
     if (src.find(forbidden[i]) != std::string::npos) {
       return false;
     }
@@ -8298,6 +8302,42 @@ bool TestTaaReprojection() {
   const size_t currPos = src.find("row_major float4x4 CurrVPU;");
   const size_t camPos = src.find("float4 CamPos;");
   return prevPos < currPos && currPos < camPos;
+}
+bool TestVelocityShaders() {
+  std::string vs;
+  std::string ps;
+  if (!LoadShaderText("VelocityVS.hlsl", vs) || !LoadShaderText("VelocityPS.hlsl", ps)) {
+    return false;
+  }
+  const char* vsRequired[6] = {
+    "float2 uv : TEXCOORD0;",
+    "float2 uv2 : TEXCOORD1;",
+    "vout.uv = uv;",
+    "vout.uv2 = uv2;",
+    "row_major float4x4 PrevViewProj;",
+    "StructuredBuffer<float4> PrevBoneRows : register(t1);"
+  };
+  for (int i = 0; i < 6; ++i) {
+    if (vs.find(vsRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  const char* psRequired[8] = {
+    "uint flags = asuint(Misc.z);",
+    "int alphaMode = (int) Misc.y;",
+    "if (alphaMode == 1)",
+    "alpha *= AlbedoTex.Sample(GeoSamp, pov).a;",
+    "alpha *= VtTail.SampleLevel(GeoSamp, pov, 0).a;",
+    "VtTable.Load(int3(",
+    "if (alpha < Misc.x)",
+    "if (h > fade)"
+  };
+  for (int i = 0; i < 8; ++i) {
+    if (ps.find(psRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  return ps.find("asuint(Misc.z)") < ps.find("alpha *= AlbedoTex.Sample");
 }
 bool TestTaaHistory() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
@@ -8346,6 +8386,109 @@ bool TestTaaHistory() {
   renderer.BeginObjects(view, proj);
   renderer.EndObjectsToTexture(cam);
   ok = ok && !renderer.IsTaaValid();
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
+bool TestTaaVelocity() {
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  float verts[3 * 22] = { 0.0f };
+  for (int v = 0; v < 3; ++v) {
+    verts[v * 22 + 0] = (v == 1) ? 1.0f : 0.0f;
+    verts[v * 22 + 1] = (v == 2) ? 1.0f : 0.0f;
+    verts[v * 22 + 5] = 1.0f;
+    verts[v * 22 + 8] = 1.0f;
+    verts[v * 22 + 11] = 1.0f;
+    verts[v * 22 + 18] = 1.0f;
+  }
+  uint32_t idxs[3] = { 0, 1, 2 };
+  Kizuri::RHIBuffer svb = rhi->CreateBuffer(sizeof(verts), 88, false, verts);
+  Kizuri::RHIBuffer sib = rhi->CreateBuffer(sizeof(idxs), 4, true, idxs);
+  if (svb == 0 || sib == 0) {
+    if (svb != 0) {
+      rhi->DestroyBuffer(svb);
+    }
+    if (sib != 0) {
+      rhi->DestroyBuffer(sib);
+    }
+    renderer.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  float view[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float proj[16] = { 1,0,0,0, 0,1,0,0, 0,0,1.1111112f,1, 0,0,-1.1111112f,0 };
+  float cam[3] = { 0.0f, 0.0f, 5.0f };
+  float origin[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float moved[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0.5f,0,0,1 };
+  float boneA[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float boneB[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0.25f,0,0,1 };
+  float bmin[3] = { -1.0f, -1.0f, -1.0f };
+  float bmax[3] = { 1.0f, 1.0f, 1.0f };
+  Kizuri::DeferredMaterial mat;
+  Kizuri::RenderDirectionalLight dl;
+  dl.dir[0] = 0.0f;
+  dl.dir[1] = -1.0f;
+  dl.dir[2] = 0.0f;
+  dl.color[0] = 1.0f;
+  dl.color[1] = 1.0f;
+  dl.color[2] = 1.0f;
+  dl.intensity = 2.0f;
+  dl.castShadow = false;
+  renderer.AddDirectionalLight(dl);
+  renderer.SetTaa(true);
+  bool ok = true;
+  renderer.BeginObjects(view, proj);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, 0xFFFFFFFFu, 0, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 0;
+  renderer.BeginObjects(view, proj);
+  renderer.DrawObjectEx(moved, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, 0xFFFFFFFFu, 0, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 1;
+  ok = ok && renderer.GetStats().velocityTris == 1;
+  renderer.BeginObjects(view, proj);
+  renderer.DrawObjectEx(moved, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, 0xFFFFFFFFu, 0, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 0;
+  renderer.BeginObjects(view, proj);
+  uint32_t offA = renderer.AddBoneMatrices(boneA, 1, 200);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, offA, 1, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 0;
+  renderer.BeginObjects(view, proj);
+  offA = renderer.AddBoneMatrices(boneA, 1, 200);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, offA, 1, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 0;
+  renderer.BeginObjects(view, proj);
+  offA = renderer.AddBoneMatrices(boneB, 1, 200);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, offA, 1, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 1;
+  ok = ok && renderer.GetStats().velocityTris == 1;
+  renderer.BeginObjects(view, proj);
+  uint32_t offB = renderer.AddBoneMatrices(boneA, 1, 201);
+  offA = renderer.AddBoneMatrices(boneA, 1, 202);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, offA, 1, 100);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, offB, 1, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 0;
+  renderer.BeginObjects(view, proj);
+  offB = renderer.AddBoneMatrices(boneB, 1, 201);
+  offA = renderer.AddBoneMatrices(boneA, 1, 202);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, offB, 1, 100);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, offA, 1, 100);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 1;
+  ok = ok && renderer.GetStats().velocityTris == 1;
+  rhi->DestroyBuffer(svb);
+  rhi->DestroyBuffer(sib);
   renderer.Shutdown();
   rhi->Shutdown();
   Kizuri::DestroyRHI(rhi);
@@ -14040,6 +14183,8 @@ int main() {
   failures += Check("MotionStable", TestMotionStable());
   failures += Check("IblBake", TestIblBake());
   failures += Check("TaaHistory", TestTaaHistory());
+  failures += Check("TaaVelocity", TestTaaVelocity());
+  failures += Check("VelocityShaders", TestVelocityShaders());
   failures += Check("AutoExposure", TestAutoExposure());
   failures += Check("CubeLut", TestCubeLut());
   failures += Check("HdrSky", TestHdrSky());

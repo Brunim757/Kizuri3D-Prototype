@@ -66,9 +66,17 @@ struct RHIRasterizer {
   bool frontCCW;
   float slopeBias;
 };
+enum class RHIDepthFunc {
+  Less,
+  LessEqual,
+  Equal,
+  GreaterEqual,
+  Always
+};
 struct RHIDepthStencil {
   bool depthEnable;
   bool depthWrite;
+  RHIDepthFunc func = RHIDepthFunc::Less;
 };
 struct RHIBlend {
   bool enable;
