@@ -5549,10 +5549,10 @@ bool TestPBR() {
 }
 bool TestShaderFiles() {
   const char* dirs[3] = { "Shaders", "Samples/../Shaders", "build/bin/Release/Shaders" };
-  const char* files[7] = { "GeometryVS.hlsl", "GeometryPS.hlsl", "LightingVS.hlsl", "LightingPS.hlsl", "DepthVS.hlsl", "VelocityVS.hlsl", "VelocityPS.hlsl" };
+  const char* files[10] = { "GeometryVS.hlsl", "GeometryPS.hlsl", "LightingVS.hlsl", "LightingPS.hlsl", "DepthVS.hlsl", "VelocityVS.hlsl", "VelocityPS.hlsl", "VelocityTessVS.hlsl", "VelocityTessHS.hlsl", "VelocityTessDS.hlsl" };
   for (int d = 0; d < 3; ++d) {
     bool allOk = true;
-    for (int f = 0; f < 7; ++f) {
+    for (int f = 0; f < 10; ++f) {
       char path[512];
       std::snprintf(path, sizeof(path), "%s/%s", dirs[d], files[f]);
       FILE* fp = std::fopen(path, "rb");
@@ -8339,6 +8339,73 @@ bool TestVelocityShaders() {
   }
   return ps.find("asuint(Misc.z)") < ps.find("alpha *= AlbedoTex.Sample");
 }
+bool TestTessellationVelocityShaders() {
+  std::string vs;
+  std::string hs;
+  std::string ds;
+  std::string geoHS;
+  std::string geoDS;
+  if (!LoadShaderText("VelocityTessVS.hlsl", vs) || !LoadShaderText("VelocityTessHS.hlsl", hs) || !LoadShaderText("VelocityTessDS.hlsl", ds)) {
+    return false;
+  }
+  if (!LoadShaderText("TessHS.hlsl", geoHS) || !LoadShaderText("TessDS.hlsl", geoDS)) {
+    return false;
+  }
+  const char* vsRequired[6] = {
+    "row_major float4x4 PrevWorld;",
+    "float3 prevWpos = mul(float4(vin.pos, 1.0), PrevWorld).xyz;",
+    "NormalMatrix(pwrot)",
+    "o.prevNrm = normalize",
+    "o.uv = vin.uv;",
+    "o.uv2 = vin.uv2;"
+  };
+  for (int i = 0; i < 6; ++i) {
+    if (vs.find(vsRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  const char* hsRequired[5] = {
+    "[outputtopology(\"triangle_cw\")]",
+    "[outputcontrolpoints(3)]",
+    "[patchconstantfunc(\"TessFactors\")]",
+    "float f = clamp(TessInfo.x, 1.0, 64.0);",
+    "return patch[cpid];"
+  };
+  for (int i = 0; i < 5; ++i) {
+    if (hs.find(hsRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  const char* dsRequired[8] = {
+    "float3 prevWpos = patch[0].prevWpos * bary.x + patch[1].prevWpos * bary.y + patch[2].prevWpos * bary.z;",
+    "float3 prevNrm = normalize(patch[0].prevNrm * bary.x + patch[1].prevNrm * bary.y + patch[2].prevNrm * bary.z);",
+    "o.pos = mul(vp, Proj);",
+    "o.prevUv = pclip.w > 1e-5 ? pclip.xy / pclip.w * float2(0.5, -0.5) + 0.5 : float2(-10.0, -10.0);",
+    "o.hasPrev = Motion.x;",
+    "o.uv = uv;",
+    "o.uv2 = patch[0].uv2",
+    "HeightTex.SampleLevel(TessSamp, uv, 0).r"
+  };
+  for (int i = 0; i < 8; ++i) {
+    if (ds.find(dsRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  const char* factorLine = "float f = clamp(TessInfo.x, 1.0, 64.0);";
+  if (geoHS.find(factorLine) == std::string::npos || geoHS.find("[outputtopology(\"triangle_cw\")]") == std::string::npos) {
+    return false;
+  }
+  if (geoDS.find("(h - 0.5) * TessInfo.y") == std::string::npos) {
+    return false;
+  }
+  if (ds.find("float disp = (h - 0.5) * TessInfo.y;") == std::string::npos) {
+    return false;
+  }
+  if (ds.find("wpos += wnrm * disp;") == std::string::npos || ds.find("prevWpos += prevNrm * disp;") == std::string::npos) {
+    return false;
+  }
+  return ds.find("float2 uv = patch[0].uv") < ds.find("HeightTex.SampleLevel");
+}
 bool TestTaaHistory() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
   if (rhi == nullptr) {
@@ -8487,6 +8554,18 @@ bool TestTaaVelocity() {
   renderer.EndObjectsToTexture(cam);
   ok = ok && renderer.GetStats().velocityDraws == 1;
   ok = ok && renderer.GetStats().velocityTris == 1;
+  renderer.SetTessellation(true, 4.0f, 0.15f);
+  ok = ok && !renderer.IsTaaValid();
+  renderer.BeginObjects(view, proj);
+  renderer.DrawObjectEx(origin, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, 0xFFFFFFFFu, 0, 300);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 0;
+  renderer.BeginObjects(view, proj);
+  renderer.DrawObjectEx(moved, svb, sib, 0, 3, &mat, 0.0f, bmin, bmax, 0xFFFFFFFFu, 0, 300);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.GetStats().velocityDraws == 1;
+  ok = ok && renderer.GetStats().velocityTris == 1;
+  renderer.SetTessellation(false, 4.0f, 0.15f);
   rhi->DestroyBuffer(svb);
   rhi->DestroyBuffer(sib);
   renderer.Shutdown();
@@ -14185,6 +14264,7 @@ int main() {
   failures += Check("TaaHistory", TestTaaHistory());
   failures += Check("TaaVelocity", TestTaaVelocity());
   failures += Check("VelocityShaders", TestVelocityShaders());
+  failures += Check("TessellationVelocityShaders", TestTessellationVelocityShaders());
   failures += Check("AutoExposure", TestAutoExposure());
   failures += Check("CubeLut", TestCubeLut());
   failures += Check("HdrSky", TestHdrSky());

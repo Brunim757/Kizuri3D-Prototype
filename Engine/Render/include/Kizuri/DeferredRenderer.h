@@ -204,6 +204,7 @@ struct VelocityDrawItem {
   RHITexture albedoTex;
   RHITexture vtTable;
   RHITexture vtTail;
+  RHITexture heightTex;
   DeferredUvXform uvXform;
 };
 struct GeoBatchItem {
@@ -459,6 +460,9 @@ public:
   std::vector<float> prevBoneUploadScratch;
   RHIVertexShader velocityVS = 0;
   RHIVertexShader velocityVSSkinned = 0;
+  RHIVertexShader velocityTessVS = 0;
+  RHIHullShader velocityTessHS = 0;
+  RHIDomainShader velocityTessDS = 0;
   RHIPixelShader velocityPS = 0;
   struct MotionEntry {
     float prevWorld[16];

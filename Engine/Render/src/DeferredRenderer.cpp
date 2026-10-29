@@ -690,6 +690,9 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   std::string geoVSPath = dir + "/GeometryVS.hlsl";
   std::string geoPSPath = dir + "/GeometryPS.hlsl";
   std::string velocityVSPath = dir + "/VelocityVS.hlsl";
+  std::string velocityTessVSPath = dir + "/VelocityTessVS.hlsl";
+  std::string velocityTessHSPath = dir + "/VelocityTessHS.hlsl";
+  std::string velocityTessDSPath = dir + "/VelocityTessDS.hlsl";
   std::string velocityPSPath = dir + "/VelocityPS.hlsl";
   std::string lightVSPath = dir + "/LightingVS.hlsl";
   std::string lightPSPath = dir + "/LightingPS.hlsl";
@@ -1025,8 +1028,17 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   }
   velocityVS = LoadVertexShader(velocityVSPath.c_str(), "main");
   velocityVSSkinned = LoadVertexShader(velocityVSPath.c_str(), "SkinnedMain");
+  velocityTessVS = LoadVertexShader(velocityTessVSPath.c_str());
+  velocityTessHS = rhi->CreateHullShaderFromFile(velocityTessHSPath.c_str(), "main");
+  if (velocityTessHS == 0) {
+    shaderErrors.push_back(std::string("Hull shader failed: ") + velocityTessHSPath);
+  }
+  velocityTessDS = rhi->CreateDomainShaderFromFile(velocityTessDSPath.c_str(), "main");
+  if (velocityTessDS == 0) {
+    shaderErrors.push_back(std::string("Domain shader failed: ") + velocityTessDSPath);
+  }
   velocityPS = LoadPixelShader(velocityPSPath.c_str());
-  if (velocityVS == 0 || velocityVSSkinned == 0 || velocityPS == 0) {
+  if (velocityVS == 0 || velocityVSSkinned == 0 || velocityTessVS == 0 || velocityTessHS == 0 || velocityTessDS == 0 || velocityPS == 0) {
     return false;
   }
   skinnedLayout = rhi->CreateInputLayoutPNUTSkinned(geoVSSkinned);
@@ -1761,9 +1773,14 @@ void DeferredRenderer::SetFallbackLight(bool on) {
   fallbackOn = on;
 }
 void DeferredRenderer::SetTessellation(bool on, float factor, float displacement) {
-  tessOn = on;
-  tessFactor = factor < 1.0f ? 1.0f : (factor > 16.0f ? 16.0f : factor);
-  tessDisp = displacement < 0.0f ? 0.0f : (displacement > 2.0f ? 2.0f : displacement);
+  float nextFactor = factor < 1.0f ? 1.0f : (factor > 16.0f ? 16.0f : factor);
+  float nextDisp = displacement < 0.0f ? 0.0f : (displacement > 2.0f ? 2.0f : displacement);
+  if (tessOn != on || tessFactor != nextFactor || tessDisp != nextDisp) {
+    tessOn = on;
+    tessFactor = nextFactor;
+    tessDisp = nextDisp;
+    InvalidateTaa();
+  }
 }
 uint32_t DeferredRenderer::CreateMaterialInstance(const DeferredMaterial& base) {
   for (uint32_t i = 0; i < matInstances.size(); ++i) {
@@ -4300,6 +4317,7 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
     vi.albedoTex = use.albedoTex;
     vi.vtTable = use.vtTable;
     vi.vtTail = use.vtTail;
+    vi.heightTex = use.heightTex;
     vi.lodFade = lodFade < 0.0f ? 0.0f : (lodFade > 1.0f ? 1.0f : lodFade);
     vi.vtResidentMip = use.vtResidentMip;
     vi.uvXform = use.xforms[0];
@@ -4586,6 +4604,7 @@ void DeferredRenderer::DrawGeoSingle(const GeoBatchItem& item) {
     rhi->SetHullShader(tessHS);
     rhi->SetDomainShader(tessDS);
     rhi->SetHullConstantBuffer(0, tessCB);
+    rhi->SetDomainConstantBuffer(0, geoCB);
     rhi->SetDomainConstantBuffer(1, tessCB);
     RHITexture hgt = ((use.texFlags & 8u) != 0 && use.heightTex != 0) ? use.heightTex : neutralBlack;
     rhi->SetDomainTexture(0, hgt);
@@ -4910,6 +4929,11 @@ void DeferredRenderer::FlushGeoQueue() {
   rhi->SetTopology(RHITopology::TriangleList);
   rhi->SetHullShader(0);
   rhi->SetDomainShader(0);
+  rhi->SetHullConstantBuffer(0, 0);
+  rhi->SetDomainConstantBuffer(0, 0);
+  rhi->SetDomainConstantBuffer(1, 0);
+  rhi->SetDomainTexture(0, 0);
+  rhi->SetDomainSampler(0, 0);
 }
 void DeferredRenderer::RenderVelocityPass() {
   if (rhi == nullptr) {
@@ -4959,6 +4983,8 @@ void DeferredRenderer::RenderVelocityPass() {
   for (size_t i = 0; i < velocityQueue.size(); ++i) {
     const VelocityDrawItem& item = velocityQueue[i];
     bool skinned = item.boneCount > 0 && item.boneOffset != 0xFFFFFFFFu;
+    bool tessellated = !skinned && tessOn && velocityTessVS != 0 && velocityTessHS != 0 && velocityTessDS != 0 && tessCB != 0;
+    bool hasHeight = tessellated && (item.texFlags & 8u) != 0 && item.heightTex != 0;
     RHIRasterizer irs;
     irs.cull = item.doubleSided ? RHICull::None : RHICull::Back;
     irs.fill = RHIFill::Solid;
@@ -4991,17 +5017,37 @@ void DeferredRenderer::RenderVelocityPass() {
     rhi->SetPixelTexture2D(0, item.albedoTex != 0 ? item.albedoTex : neutralAlbedo);
     rhi->SetPixelTexture2D(1, item.vtTail != 0 ? item.vtTail : neutralBlack);
     rhi->SetPixelTexture2D(2, item.vtTable != 0 ? item.vtTable : neutralBlack);
-    rhi->SetVertexShader(skinned ? velocityVSSkinned : velocityVS);
-    rhi->SetInputLayout(skinned ? skinnedLayout : layout);
-    if (skinned) {
-      uint32_t boneData[4] = { item.boneOffset, 0, 0, 0 };
-      rhi->UpdateConstantBuffer(boneCB, boneData, sizeof(boneData));
-      rhi->SetVertexConstantBuffer(1, boneCB);
-      rhi->SetVertexSRV(0, boneBuf);
-      rhi->SetVertexSRV(1, prevBoneBuf);
-    } else {
+    if (tessellated) {
+      float tc[4] = { tessFactor, tessDisp, hasHeight ? 1.0f : 0.0f, 0.0f };
+      rhi->UpdateConstantBuffer(tessCB, &tc, sizeof(tc));
+      rhi->SetTopology(RHITopology::Patch3);
+      rhi->SetHullShader(velocityTessHS);
+      rhi->SetDomainShader(velocityTessDS);
+      rhi->SetHullConstantBuffer(0, tessCB);
+      rhi->SetDomainConstantBuffer(0, geoCB);
+      rhi->SetDomainConstantBuffer(1, tessCB);
+      rhi->SetDomainTexture(0, hasHeight ? item.heightTex : neutralBlack);
+      rhi->SetDomainSampler(0, geoSampler);
+      rhi->SetVertexShader(velocityTessVS);
+      rhi->SetInputLayout(layout);
       rhi->SetVertexSRV(0, 0);
       rhi->SetVertexSRV(1, 0);
+    } else {
+      rhi->SetTopology(RHITopology::TriangleList);
+      rhi->SetHullShader(0);
+      rhi->SetDomainShader(0);
+      rhi->SetVertexShader(skinned ? velocityVSSkinned : velocityVS);
+      rhi->SetInputLayout(skinned ? skinnedLayout : layout);
+      if (skinned) {
+        uint32_t boneData[4] = { item.boneOffset, 0, 0, 0 };
+        rhi->UpdateConstantBuffer(boneCB, boneData, sizeof(boneData));
+        rhi->SetVertexConstantBuffer(1, boneCB);
+        rhi->SetVertexSRV(0, boneBuf);
+        rhi->SetVertexSRV(1, prevBoneBuf);
+      } else {
+        rhi->SetVertexSRV(0, 0);
+        rhi->SetVertexSRV(1, 0);
+      }
     }
     rhi->SetVertexBuffer(item.vb, 0);
     rhi->SetIndexBuffer(item.ib);
@@ -5009,6 +5055,14 @@ void DeferredRenderer::RenderVelocityPass() {
     ++stats.velocityDraws;
     stats.velocityTris += item.count / 3;
   }
+  rhi->SetTopology(RHITopology::TriangleList);
+  rhi->SetHullShader(0);
+  rhi->SetDomainShader(0);
+  rhi->SetHullConstantBuffer(0, 0);
+  rhi->SetDomainConstantBuffer(0, 0);
+  rhi->SetDomainConstantBuffer(1, 0);
+  rhi->SetDomainTexture(0, 0);
+  rhi->SetDomainSampler(0, 0);
   rhi->SetVertexSRV(0, 0);
   rhi->SetVertexSRV(1, 0);
   rhi->SetPixelTexture2D(0, 0);

@@ -225,7 +225,7 @@ Sem Ray Tracing
 - [x] FXAA
 - [x] TAA
 - [x] Temporal jitter
-- [x] Motion vectors (velocity buffer por objeto e por osso)
+- [x] Motion vectors (velocity buffer por objeto, por osso e com paridade de tessellation)
 - [x] History buffers
 - [x] TAA sharpening
 - [x] TAA ghosting reduction
