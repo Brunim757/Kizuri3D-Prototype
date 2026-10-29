@@ -346,6 +346,7 @@ struct EditorApp {
   void PumpAssets();
   void UploadDefaultCube();
   void HandleOsDrop(void* hwnd);
+  void ApplyDeferredRendererState();
   void RenderScene();
   void UpdateCamera(float dt, bool lookNow);
   void HandleViewportClick();

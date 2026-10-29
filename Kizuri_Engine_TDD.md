@@ -501,6 +501,7 @@ Esta seção documenta armadilhas de baixo nível identificadas por revisão té
 - **Redundância de estado na RHI**: a camada fina pode reenviar Render States já ativos na GPU. **Mitigação**: a RHI mantém um cache do último estado enviado e descarta chamadas redundantes antes de repassar ao driver.
 - **Gargalo de Draw Calls no Deferred Rendering**: cenas urbanas densas podem estourar o limite de draw calls do DX11 na CPU. **Mitigação**: instancing agressivo para geometria repetida (prédios, props, vegetação), culling de oclusão, meshlets/GPU culling e static batching desde o renderer, não como otimização posterior.
 - **Falta de VRAM sem Texture Streaming**: cidade contínua sem streaming estoura a VRAM do hardware mínimo. **Mitigação**: streaming de textura por distância e por célula, orçamento de VRAM, priorização e despejo previsível, integrado ao pipeline de assets e ao mundo.
+- **Textura do Viewport destruída no meio do frame**: redimensionar o renderer depois que o ImGui registrou a textura do painel deixa o Viewport cinza ou com o handle antigo. **Mitigação**: resize, render scale/FSR e resolução dinâmica são enfileirados e aplicados no início do frame seguinte, antes do `NewFrame`; nenhum target referenciado pelo draw list é destruído durante a montagem da UI.
 
 ### 8.4 Física (Jolt), Animação e Gameplay
 

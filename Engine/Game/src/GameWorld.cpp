@@ -517,6 +517,7 @@ void GameWorld::SetViewSize(int width, int height) {
   if (width > 0 && height > 0) {
     viewWidth = width;
     viewHeight = height;
+    renderer.RequestResize(width, height);
   }
 }
 void GameWorld::SetCameraPosition(float x, float y, float z) {
@@ -763,6 +764,7 @@ void GameWorld::Render(float alpha) {
   if (!initialized) {
     return;
   }
+  renderer.ApplyPendingTargets();
   float view[16];
   float proj[16];
   const float aspect = static_cast<float>(viewWidth) / (viewHeight > 0 ? static_cast<float>(viewHeight) : 1.0f);

@@ -5574,6 +5574,66 @@ bool TestShaderFiles() {
   }
   return false;
 }
+bool TestDeferredQueuedTargets() {
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  float view[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+  float proj[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+  float cam[3] = { 0.0f, 0.0f, 0.0f };
+  renderer.SetTaa(true);
+  renderer.BeginObjects(view, proj);
+  renderer.EndObjectsToTexture(cam);
+  renderer.BeginObjects(view, proj);
+  renderer.EndObjectsToTexture(cam);
+  bool ok = renderer.IsTaaValid();
+  ok = ok && renderer.RenderWidth() == 160 && renderer.RenderHeight() == 100;
+  ok = ok && !renderer.HasPendingTargets();
+  ok = ok && renderer.RequestResize(80, 50);
+  ok = ok && renderer.HasPendingTargets();
+  ok = ok && renderer.IsTaaValid();
+  ok = ok && renderer.RenderWidth() == 160 && renderer.RenderHeight() == 100;
+  renderer.BeginObjects(view, proj);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.RenderWidth() == 160 && renderer.RenderHeight() == 100;
+  ok = ok && renderer.IsTaaValid();
+  ok = ok && renderer.ApplyPendingTargets();
+  ok = ok && renderer.RenderWidth() == 80 && renderer.RenderHeight() == 50;
+  ok = ok && !renderer.IsTaaValid();
+  ok = ok && !renderer.HasPendingTargets();
+  ok = ok && !renderer.RequestResize(80, 50);
+  ok = ok && !renderer.RequestResize(0, 50);
+  ok = ok && !renderer.RequestResize(80, -1);
+  ok = ok && renderer.ApplyPendingTargets();
+  ok = ok && renderer.RequestFsr(0.5f, 0.25f);
+  ok = ok && renderer.HasPendingTargets();
+  ok = ok && renderer.RenderScale() == 1.0f;
+  ok = ok && renderer.ApplyPendingTargets();
+  ok = ok && renderer.RenderScale() == 0.5f;
+  ok = ok && renderer.RenderWidth() == 40 && renderer.RenderHeight() == 25;
+  renderer.BeginObjects(view, proj);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.RenderWidth() == 40 && renderer.RenderHeight() == 25;
+  ok = ok && !renderer.HasPendingTargets();
+  ok = ok && renderer.RequestResize(120, 60);
+  ok = ok && renderer.RequestFsr(0.75f, 0.5f);
+  ok = ok && renderer.ApplyPendingTargets();
+  ok = ok && renderer.RenderWidth() == 90 && renderer.RenderHeight() == 45;
+  ok = ok && renderer.RenderScale() == 0.75f;
+  ok = ok && renderer.RequestFsr(0.2f, 2.0f);
+  ok = ok && renderer.ApplyPendingTargets();
+  ok = ok && renderer.RenderScale() == 0.5f;
+  ok = ok && renderer.RenderWidth() == 60 && renderer.RenderHeight() == 30;
+  renderer.BeginObjects(view, proj);
+  renderer.EndObjectsToTexture(cam);
+  ok = ok && renderer.RenderWidth() == 60 && renderer.RenderHeight() == 30;
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
 bool TestDeferredNull() {  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
   if (rhi == nullptr) {
     return false;
@@ -13995,6 +14055,7 @@ int main() {
   failures += Check("PBR-Directional", TestPBR());
   failures += Check("ShaderFiles", TestShaderFiles());
   failures += Check("Deferred-Null", TestDeferredNull());
+  failures += Check("Deferred-QueuedTargets", TestDeferredQueuedTargets());
   failures += Check("Deferred-Bones", TestDeferredBones());
   failures += Check("Scene-CRUD", TestSceneCrud());
   failures += Check("Scene-Duplicate", TestSceneDuplicate());

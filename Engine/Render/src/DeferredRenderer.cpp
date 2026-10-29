@@ -333,9 +333,15 @@ DeferredRenderer::DeferredRenderer()
   , fsrOut(0)
   , outW(0)
   , outH(0)
+  , pendingW(0)
+  , pendingH(0)
+  , resizePending(false)
   , renderScale(1.0f)
-  , temporalUpsampling(false)
   , fsrSharpness(0.5f)
+  , pendingScale(1.0f)
+  , pendingSharpness(0.5f)
+  , fsrPending(false)
+  , temporalUpsampling(false)
   , ssaoPS(0)
   , ssaoBlurPS(0)
   , gtaoPS(0)
@@ -662,6 +668,12 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   if (h < 1) {
     h = 1;
   }
+  pendingW = 0;
+  pendingH = 0;
+  resizePending = false;
+  pendingScale = renderScale;
+  pendingSharpness = fsrSharpness;
+  fsrPending = false;
   std::string dir(shaderDir);
   std::string geoVSPath = dir + "/GeometryVS.hlsl";
   std::string geoPSPath = dir + "/GeometryPS.hlsl";
@@ -3218,10 +3230,91 @@ void DeferredRenderer::RenderShadowMaps() {
   hasCasterHash = true;
   UpdateShadowMoments();
 }
+bool DeferredRenderer::RequestResize(int nw, int nh) {
+  if (nw <= 0 || nh <= 0) {
+    return false;
+  }
+  if (nw == outW && nh == outH) {
+    resizePending = false;
+    return false;
+  }
+  if (resizePending && nw == pendingW && nh == pendingH) {
+    return false;
+  }
+  pendingW = nw;
+  pendingH = nh;
+  resizePending = true;
+  return true;
+}
+bool DeferredRenderer::RequestFsr(float scale, float sharpness) {
+  float s = scale;
+  if (s < 0.5f) {
+    s = 0.5f;
+  }
+  if (s > 1.0f) {
+    s = 1.0f;
+  }
+  float sh = sharpness;
+  if (sh < 0.0f) {
+    sh = 0.0f;
+  }
+  if (sh > 1.0f) {
+    sh = 1.0f;
+  }
+  if (!fsrPending && s == renderScale && sh == fsrSharpness) {
+    return false;
+  }
+  if (fsrPending && s == pendingScale && sh == pendingSharpness) {
+    return false;
+  }
+  pendingScale = s;
+  pendingSharpness = sh;
+  fsrPending = true;
+  return true;
+}
+bool DeferredRenderer::ApplyPendingTargets() {
+  if (rhi == nullptr) {
+    return false;
+  }
+  if (!resizePending && !fsrPending) {
+    return true;
+  }
+  int nw = resizePending ? pendingW : outW;
+  int nh = resizePending ? pendingH : outH;
+  float ns = fsrPending ? pendingScale : renderScale;
+  float nsh = fsrPending ? pendingSharpness : fsrSharpness;
+  int rw = static_cast<int>(static_cast<float>(nw) * ns);
+  int rh = static_cast<int>(static_cast<float>(nh) * ns);
+  if (rw < 1) {
+    rw = 1;
+  }
+  if (rh < 1) {
+    rh = 1;
+  }
+  bool changed = nw != outW || nh != outH || rw != w || rh != h;
+  resizePending = false;
+  fsrPending = false;
+  outW = nw;
+  outH = nh;
+  w = rw;
+  h = rh;
+  renderScale = ns;
+  fsrSharpness = nsh;
+  if (!changed) {
+    return true;
+  }
+  DestroyTargets();
+  if (!CreateTargets()) {
+    return false;
+  }
+  InvalidateTaa();
+  return true;
+}
 bool DeferredRenderer::Resize(int nw, int nh) {
   if (nw <= 0 || nh <= 0) {
     return false;
   }
+  resizePending = false;
   if (nw == outW && nh == outH) {
     return true;
   }
@@ -3256,6 +3349,7 @@ void DeferredRenderer::SetFsr(float scale, float sharpness) { float s = scale;
   if (sh > 1.0f) {
     sh = 1.0f;
   }
+  fsrPending = false;
   if (s == renderScale && sh == fsrSharpness) {
     return;
   }
@@ -3434,13 +3528,13 @@ void DeferredRenderer::UpdateDynamicResolution() {
     if (dynScale < dynMin) {
       dynScale = dynMin;
     }
-    SetFsr(dynScale, fsrSharpness);
+    RequestFsr(dynScale, fsrSharpness);
   } else if (avg < static_cast<double>(dynTargetMs) * 0.9 && dynScale < dynMax) {
     dynScale += 0.05f;
     if (dynScale > dynMax) {
       dynScale = dynMax;
     }
-    SetFsr(dynScale, fsrSharpness);
+    RequestFsr(dynScale, fsrSharpness);
   }
 }
 double DeferredRenderer::ElapsedMs(const std::chrono::steady_clock::time_point& from, const std::chrono::steady_clock::time_point& to) {

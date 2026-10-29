@@ -32,27 +32,30 @@
 namespace Kizuri {
 static Transform s_clipboard;
 static bool s_hasClipboard = false;
-void EditorApp::RenderScene() {
-  if (!viewValid || viewW < 8.0f || viewH < 8.0f) {
-    return;
-  }
+void EditorApp::ApplyDeferredRendererState() {
   RECT rc;
   GetClientRect(static_cast<HWND>(window.NativeHandle()), &rc);
   int cw = rc.right - rc.left;
   int ch = rc.bottom - rc.top;
-  if ((cw != rhi->Width() || ch != rhi->Height()) && cw > 0 && ch > 0) {
+  if (cw > 0 && ch > 0 && (cw != rhi->Width() || ch != rhi->Height())) {
     ImGui_ImplDX11_InvalidateDeviceObjects();
     rhi->Resize(cw, ch);
     ImGui_ImplDX11_CreateDeviceObjects();
   }
+  if (viewTempUpsample != renderer.IsTemporalUpsampling()) {
+    renderer.SetTemporalUpsampling(viewTempUpsample);
+    viewScale = renderer.RenderScale();
+  }
+  renderer.ApplyPendingTargets();
+}
+void EditorApp::RenderScene() {
+  if (!viewValid || viewW < 8.0f || viewH < 8.0f) {
+    return;
+  }
   int rw = static_cast<int>(viewW);
   int rh = static_cast<int>(viewH);
-  static int lastRTW = 0;
-  static int lastRTH = 0;
-  if (rw != lastRTW || rh != lastRTH) {
-    renderer.Resize(rw, rh);
-    lastRTW = rw;
-    lastRTH = rh;
+  if (rw > 0 && rh > 0) {
+    renderer.RequestResize(rw, rh);
   }
   renderer.SetViewOffset(0.0f, 0.0f);
   DirectX::XMMATRIX view = camera.View();
@@ -82,7 +85,8 @@ void EditorApp::RenderScene() {
   float cpz = 0.0f;
   camera.GetPosition(cpx, cpy, cpz);
   float cpos[3] = { cpx, cpy, cpz };
-  renderer.SetFsr(viewScale, viewSharp);
+  float desiredScale = viewDynRes ? renderer.GetDynamicScale() : viewScale;
+  renderer.RequestFsr(desiredScale, viewSharp);
   renderer.BeginObjects(&vf.m[0][0], &pf.m[0][0]);
   renderer.ClearLights();
   MainCameraSetup mainCam;
@@ -1891,7 +1895,12 @@ void EditorApp::HandleRubberSelect(float x0, float y0, float x1, float y1) {
   log.Add(LogLevel::Info, std::string("Rubber select: ") + std::to_string(hits.size()));
 }
 void EditorApp::DrawViewport() {
-  ImGui::Begin("Viewport", &showViewport);
+  bool viewportVisible = ImGui::Begin("Viewport", &showViewport);
+  if (!viewportVisible) {
+    viewValid = false;
+    ImGui::End();
+    return;
+  }
   ImGuizmo::OPERATION curOp = static_cast<ImGuizmo::OPERATION>(gizmoOp);
   if (ImGui::RadioButton("Move", curOp == ImGuizmo::TRANSLATE)) {
     gizmoOp = static_cast<int>(ImGuizmo::TRANSLATE);
@@ -2699,9 +2708,7 @@ void EditorApp::DrawSettings() {
       if (ImGui::Checkbox("GPU Driven", &viewGpuDriven)) {
         renderer.SetGpuDriven(viewGpuDriven);
       }
-      if (ImGui::Checkbox("Temporal Upsampling", &viewTempUpsample)) {
-        renderer.SetTemporalUpsampling(viewTempUpsample);
-      }
+      ImGui::Checkbox("Temporal Upsampling", &viewTempUpsample);
       if (ImGui::Checkbox("Shadow Multithread", &viewMtShadows)) {
         renderer.SetShadowMultithread(viewMtShadows);
       }

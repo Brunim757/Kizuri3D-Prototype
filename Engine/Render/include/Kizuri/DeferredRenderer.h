@@ -343,6 +343,10 @@ public:
   bool FogEnabled() const { return fogOn; }
   float FogDensity() const { return fogDensity; }
   bool Resize(int w, int h);
+  bool RequestResize(int w, int h);
+  bool RequestFsr(float scale, float sharpness);
+  bool ApplyPendingTargets();
+  bool HasPendingTargets() const { return resizePending || fsrPending; }
   void SetViewOffset(float x, float y);
   void Render(const float view[16], const float proj[16], const float camPos[3]);
   void RenderToTexture(const float view[16], const float proj[16], const float camPos[3]);
@@ -365,6 +369,7 @@ public:
   bool IsTemporalUpsampling() const { return temporalUpsampling; }
   float RenderScale() const { return renderScale; }
   float MainFovY() const { return mainCam.fovY; }
+  int RenderWidth() const { return w; }
   int RenderHeight() const { return h; }
   void SetTargetFrameRate(float fps) { framePacer.SetTargetFps(fps); }
   float TargetFrameRate() const { return framePacer.TargetFps(); }
@@ -632,8 +637,14 @@ public:
   RHIRenderTarget fsrOut;
   int outW;
   int outH;
+  int pendingW;
+  int pendingH;
+  bool resizePending;
   float renderScale;
   float fsrSharpness;
+  float pendingScale;
+  float pendingSharpness;
+  bool fsrPending;
   bool temporalUpsampling;
   RHIPixelShader ssaoPS;
   RHIPixelShader ssaoBlurPS;

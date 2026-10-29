@@ -761,6 +761,7 @@ int EditorApp::Run() {
       uiScale = pendingUiScale;
       ApplyEditorTheme(uiScale);
     }
+    ApplyDeferredRendererState();
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
@@ -1067,6 +1068,8 @@ void EditorApp::Frame() {
   if (showViewport) {
     ImGui::SetNextWindowDockID(static_cast<ImGuiID>(dockCenterId), ImGuiCond_Once);
     DrawViewport();
+  } else {
+    viewValid = false;
   }
   if (showHierarchy) {
     ImGui::SetNextWindowDockID(static_cast<ImGuiID>(dockLeftId), ImGuiCond_Once);
