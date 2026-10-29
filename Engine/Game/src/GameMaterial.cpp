@@ -16,6 +16,128 @@ uint32_t ResolveMaterialSlot(AssetDatabase& assets, const std::string& guid, uin
   out = tr->gpu;
   return bit;
 }
+void MaterialDataFromMesh(const MeshMaterialData& mm, MaterialData& m) {
+  m.albedo[0] = mm.albedo[0];
+  m.albedo[1] = mm.albedo[1];
+  m.albedo[2] = mm.albedo[2];
+  m.alpha = mm.alpha;
+  m.metallic = mm.metallic;
+  m.roughness = mm.roughness;
+  m.albedoTex = mm.albedoTexGuid;
+  m.normalTex = mm.normalTexGuid;
+  m.ormTex = mm.ormTexGuid;
+  m.heightTex = mm.heightTexGuid;
+  m.emissive[0] = mm.emissive[0];
+  m.emissive[1] = mm.emissive[1];
+  m.emissive[2] = mm.emissive[2];
+  m.emissiveStrength = mm.emissiveStrength;
+  m.emissiveTex = mm.emissiveTexGuid;
+  m.unlit = mm.unlit;
+  m.doubleSided = mm.doubleSided;
+  m.alphaMode = mm.alphaMode;
+  m.alphaCutoff = mm.alphaCutoff;
+  for (int s = 0; s < 5; ++s) {
+    m.xforms[s].offsetU = mm.xforms[s].offsetU;
+    m.xforms[s].offsetV = mm.xforms[s].offsetV;
+    m.xforms[s].scaleU = mm.xforms[s].scaleU;
+    m.xforms[s].scaleV = mm.xforms[s].scaleV;
+    m.xforms[s].rotation = mm.xforms[s].rotation;
+    m.xforms[s].uvSet = mm.xforms[s].uvSet;
+  }
+  m.ior = mm.ior;
+  m.hasSpecular = mm.hasSpecular;
+  m.specularColor[0] = mm.specularColor[0];
+  m.specularColor[1] = mm.specularColor[1];
+  m.specularColor[2] = mm.specularColor[2];
+  m.specularStrength = mm.specularStrength;
+  m.specularTex = mm.specularTexGuid;
+  m.specularColorTex = mm.specularColorTexGuid;
+  m.clearcoat = mm.clearcoat;
+  m.clearcoatRoughness = mm.clearcoatRoughness;
+  m.clearcoatTex = mm.clearcoatTexGuid;
+  m.clearcoatRoughnessTex = mm.clearcoatRoughnessTexGuid;
+  m.clearcoatNormalTex = mm.clearcoatNormalTexGuid;
+  m.sheenColor[0] = mm.sheenColor[0];
+  m.sheenColor[1] = mm.sheenColor[1];
+  m.sheenColor[2] = mm.sheenColor[2];
+  m.sheenRoughness = mm.sheenRoughness;
+  m.sheenColorTex = mm.sheenColorTexGuid;
+  m.sheenRoughnessTex = mm.sheenRoughnessTexGuid;
+  m.anisotropy = mm.anisotropy;
+  m.anisotropyRotation = mm.anisotropyRotation;
+  m.anisotropyTex = mm.anisotropyTexGuid;
+  m.iridescence = mm.iridescence;
+  m.iridescenceIor = mm.iridescenceIor;
+  m.iridescenceThicknessMin = mm.iridescenceThicknessMin;
+  m.iridescenceThicknessMax = mm.iridescenceThicknessMax;
+  m.iridescenceTex = mm.iridescenceTexGuid;
+  m.iridescenceThicknessTex = mm.iridescenceThicknessTexGuid;
+  m.transmission = mm.transmission;
+  m.transmissionTex = mm.transmissionTexGuid;
+  m.thickness = mm.thickness;
+  m.thicknessTex = mm.thicknessTexGuid;
+  m.attenuationColor[0] = mm.attenuationColor[0];
+  m.attenuationColor[1] = mm.attenuationColor[1];
+  m.attenuationColor[2] = mm.attenuationColor[2];
+  m.attenuationDistance = mm.attenuationDistance;
+  m.dispersion = mm.dispersion;
+}
+uint32_t ResolveMeshMaterialIndex(const MeshAssetData& mesh, const Entity& entity, size_t partIndex) {
+  if (partIndex >= mesh.parts.size()) {
+    return 0xFFFFFFFFu;
+  }
+  uint32_t materialIndex = mesh.parts[partIndex].material;
+  if (entity.variantIndex >= 0) {
+    for (size_t i = 0; i < mesh.variantAssigns.size(); ++i) {
+      const MeshVariantAssign& assign = mesh.variantAssigns[i];
+      if (assign.part == static_cast<uint32_t>(partIndex) && static_cast<int>(assign.variant) == entity.variantIndex && assign.material < mesh.materials.size()) {
+        materialIndex = assign.material;
+        break;
+      }
+    }
+  }
+  if (materialIndex >= mesh.materials.size()) {
+    return 0xFFFFFFFFu;
+  }
+  return materialIndex;
+}
+std::unique_ptr<Command> BuildAddMaterialCommand(EntityId target, const Entity& entity, const MeshAssetData& mesh) {
+  uint32_t baseIndex = ResolveMeshMaterialIndex(mesh, entity, 0);
+  if (baseIndex == 0xFFFFFFFFu && !mesh.materials.empty()) {
+    baseIndex = 0;
+  }
+  MaterialData initial;
+  MakeDefaultMaterial(initial);
+  if (baseIndex != 0xFFFFFFFFu) {
+    MaterialDataFromMesh(mesh.materials[baseIndex], initial);
+  }
+  std::unique_ptr<CompositeCmd> composite(new CompositeCmd("Add Material"));
+  composite->Add(std::unique_ptr<Command>(new AddComponentCmd(target, ComponentRegistry::kMaterial, &initial)));
+  for (size_t p = 0; p < mesh.parts.size(); ++p) {
+    bool hasOverride = false;
+    for (size_t k = 0; k < entity.partMaterials.size(); ++k) {
+      if (entity.partMaterials[k].part == static_cast<uint32_t>(p)) {
+        hasOverride = true;
+        break;
+      }
+    }
+    if (hasOverride) {
+      continue;
+    }
+    const uint32_t materialIndex = ResolveMeshMaterialIndex(mesh, entity, p);
+    if (materialIndex == 0xFFFFFFFFu || materialIndex == baseIndex) {
+      continue;
+    }
+    MaterialData partInitial;
+    MakeDefaultMaterial(partInitial);
+    MaterialDataFromMesh(mesh.materials[materialIndex], partInitial);
+    if (MaterialEqual(initial, partInitial)) {
+      continue;
+    }
+    composite->Add(std::unique_ptr<Command>(new AddPartMaterialCmd(target, static_cast<uint32_t>(p), partInitial)));
+  }
+  return std::unique_ptr<Command>(composite.release());
+}
 void FillDeferredFromEntity(AssetDatabase& assets, const MaterialData& m, DeferredMaterial& partMat) {
   partMat.linkGroup = static_cast<uint32_t>(m.linkMask < 0 ? 0 : (m.linkMask > 255 ? 255 : m.linkMask));
   std::string nodeAlbedoTex = m.albedoTex;
@@ -263,7 +385,6 @@ bool FillDeferredForPart(AssetDatabase& assets, const Entity& entity, const Mesh
   if (partIndex >= mesh.parts.size()) {
     return false;
   }
-  const MeshPartData& part = mesh.parts[partIndex];
   for (size_t k = 0; k < entity.partMaterials.size(); ++k) {
     if (entity.partMaterials[k].part == static_cast<uint32_t>(partIndex)) {
       FillDeferredFromEntity(assets, entity.partMaterials[k].material, out);
@@ -276,18 +397,9 @@ bool FillDeferredForPart(AssetDatabase& assets, const Entity& entity, const Mesh
     ApplyEntityLightmap(assets, entity, out);
     return true;
   }
-  if (part.material >= mesh.materials.size()) {
+  const uint32_t materialIndex = ResolveMeshMaterialIndex(mesh, entity, partIndex);
+  if (materialIndex == 0xFFFFFFFFu) {
     return false;
-  }
-  uint32_t materialIndex = part.material;
-  if (entity.variantIndex >= 0) {
-    for (size_t i = 0; i < mesh.variantAssigns.size(); ++i) {
-      const MeshVariantAssign& assign = mesh.variantAssigns[i];
-      if (assign.part == static_cast<uint32_t>(partIndex) && static_cast<int>(assign.variant) == entity.variantIndex && assign.material < mesh.materials.size()) {
-        materialIndex = assign.material;
-        break;
-      }
-    }
   }
   FillDeferredFromMesh(assets, mesh.materials[materialIndex], out);
   ApplyEntityLightmap(assets, entity, out);

@@ -46,6 +46,18 @@ struct EntitySnapshot {
   bool Capture(const Scene& scene, EntityId root);
   EntityId Restore(Scene& scene, EntityId newParent) const;
 };
+class CompositeCmd : public Command {
+public:
+  explicit CompositeCmd(const char* label);
+  void Add(std::unique_ptr<Command> cmd);
+  bool Empty() const;
+  bool Apply(Scene& scene) override;
+  bool Revert(Scene& scene) override;
+  const char* Name() const override;
+private:
+  std::string label;
+  std::vector<std::unique_ptr<Command>> commands;
+};
 class AddComponentCmd : public Command {
 public:
   AddComponentCmd(EntityId target, ComponentTypeId type, const void* initialData = nullptr);

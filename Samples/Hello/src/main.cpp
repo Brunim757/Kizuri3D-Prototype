@@ -4543,6 +4543,168 @@ bool TestGameMaterialParts() {
        std::fabs(whole.albedo[2] - 1.0f) < 1e-6f;
   return ok;
 }
+bool TestAddMaterialPreservesParts() {
+  Kizuri::Scene scene;
+  Kizuri::UndoStack undo;
+  Kizuri::AssetDatabase assets;
+  Kizuri::MeshAssetData mesh;
+  mesh.materials.resize(3);
+  mesh.materials[0].albedo[0] = 1.0f;
+  mesh.materials[0].albedo[1] = 0.0f;
+  mesh.materials[0].albedo[2] = 0.0f;
+  mesh.materials[1].albedo[0] = 0.0f;
+  mesh.materials[1].albedo[1] = 1.0f;
+  mesh.materials[1].albedo[2] = 0.0f;
+  mesh.materials[2].albedo[0] = 0.0f;
+  mesh.materials[2].albedo[1] = 0.0f;
+  mesh.materials[2].albedo[2] = 1.0f;
+  for (uint32_t i = 0; i < 4; ++i) {
+    Kizuri::MeshPartData part;
+    part.indexOffset = i * 3;
+    part.indexCount = 3;
+    part.material = i == 1 ? 1u : (i == 3 ? 2u : 0u);
+    mesh.parts.push_back(part);
+  }
+  Kizuri::EntityId id = scene.CreateEntity("material-preserve");
+  Kizuri::Entity* entity = scene.Get(id);
+  if (!id.IsValid() || entity == nullptr) {
+    return false;
+  }
+  if (!undo.Execute(Kizuri::BuildAddMaterialCommand(id, *entity, mesh), scene)) {
+    return false;
+  }
+  entity = scene.Get(id);
+  bool ok = entity != nullptr && entity->hasMaterial;
+  ok = ok && entity->partMaterials.size() == 2;
+  ok = ok && entity->partMaterials[0].part == 1 && entity->partMaterials[1].part == 3;
+  ok = ok && std::fabs(entity->material.albedo[0] - 1.0f) < 1e-6f;
+  Kizuri::DeferredMaterial out;
+  ok = ok && Kizuri::FillDeferredForPart(assets, *entity, mesh, 0, out) && std::fabs(out.albedo[0] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, *entity, mesh, 1, out) && std::fabs(out.albedo[0]) < 1e-6f && std::fabs(out.albedo[1] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, *entity, mesh, 2, out) && std::fabs(out.albedo[0] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, *entity, mesh, 3, out) && std::fabs(out.albedo[2] - 1.0f) < 1e-6f;
+  if (!ok || !undo.Undo(scene)) {
+    return false;
+  }
+  entity = scene.Get(id);
+  ok = entity != nullptr && !entity->hasMaterial && entity->partMaterials.empty();
+  if (!ok || !undo.Redo(scene)) {
+    return false;
+  }
+  entity = scene.Get(id);
+  ok = entity != nullptr && entity->hasMaterial && entity->partMaterials.size() == 2;
+  ok = ok && Kizuri::FillDeferredForPart(assets, *entity, mesh, 1, out) && std::fabs(out.albedo[1] - 1.0f) < 1e-6f;
+  if (!ok) {
+    return false;
+  }
+  Kizuri::MeshAssetData uniform;
+  uniform.materials.resize(2);
+  uniform.materials[0].albedo[0] = 1.0f;
+  uniform.materials[1].albedo[0] = 1.0f;
+  for (uint32_t i = 0; i < 2; ++i) {
+    Kizuri::MeshPartData part;
+    part.indexOffset = i * 3;
+    part.indexCount = 3;
+    part.material = i;
+    uniform.parts.push_back(part);
+  }
+  Kizuri::EntityId uniformId = scene.CreateEntity("material-uniform");
+  Kizuri::Entity* uniformEntity = scene.Get(uniformId);
+  if (uniformEntity == nullptr) {
+    return false;
+  }
+  if (!undo.Execute(Kizuri::BuildAddMaterialCommand(uniformId, *uniformEntity, uniform), scene)) {
+    return false;
+  }
+  uniformEntity = scene.Get(uniformId);
+  ok = uniformEntity != nullptr && uniformEntity->hasMaterial && uniformEntity->partMaterials.empty();
+  if (!ok || !undo.Undo(scene)) {
+    return false;
+  }
+  Kizuri::EntityId variantId = scene.CreateEntity("material-variant");
+  Kizuri::Entity* variant = scene.Get(variantId);
+  if (variant == nullptr) {
+    return false;
+  }
+  variant->variantIndex = 1;
+  Kizuri::MeshVariantAssign assign;
+  assign.part = 0;
+  assign.variant = 1;
+  assign.material = 2;
+  mesh.variantAssigns.push_back(assign);
+  if (!undo.Execute(Kizuri::BuildAddMaterialCommand(variantId, *variant, mesh), scene)) {
+    return false;
+  }
+  variant = scene.Get(variantId);
+  ok = variant != nullptr && variant->hasMaterial;
+  ok = ok && std::fabs(variant->material.albedo[2] - 1.0f) < 1e-6f;
+  ok = ok && variant->partMaterials.size() == 2;
+  ok = ok && variant->partMaterials[0].part == 1 && std::fabs(variant->partMaterials[0].material.albedo[1] - 1.0f) < 1e-6f;
+  ok = ok && variant->partMaterials[1].part == 2 && std::fabs(variant->partMaterials[1].material.albedo[0] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, *variant, mesh, 0, out) && std::fabs(out.albedo[2] - 1.0f) < 1e-6f;
+  if (!ok || !undo.Undo(scene)) {
+    return false;
+  }
+  Kizuri::EntityId overrideId = scene.CreateEntity("material-existing");
+  Kizuri::Entity* existing = scene.Get(overrideId);
+  if (existing == nullptr) {
+    return false;
+  }
+  Kizuri::PartMaterial custom;
+  custom.part = 1;
+  Kizuri::MakeDefaultMaterial(custom.material);
+  custom.material.albedo[0] = 1.0f;
+  custom.material.albedo[1] = 1.0f;
+  custom.material.albedo[2] = 0.0f;
+  existing->partMaterials.push_back(custom);
+  if (!undo.Execute(Kizuri::BuildAddMaterialCommand(overrideId, *existing, mesh), scene)) {
+    return false;
+  }
+  existing = scene.Get(overrideId);
+  ok = existing != nullptr && existing->hasMaterial && existing->partMaterials.size() == 2;
+  ok = ok && existing->partMaterials[0].part == 1 && std::fabs(existing->partMaterials[0].material.albedo[1] - 1.0f) < 1e-6f;
+  ok = ok && existing->partMaterials[1].part == 3 && std::fabs(existing->partMaterials[1].material.albedo[2] - 1.0f) < 1e-6f;
+  ok = ok && Kizuri::FillDeferredForPart(assets, *existing, mesh, 1, out) && std::fabs(out.albedo[0] - 1.0f) < 1e-6f && std::fabs(out.albedo[1] - 1.0f) < 1e-6f;
+  return ok;
+}
+bool TestCompositeCommand() {
+  Kizuri::Scene scene;
+  Kizuri::UndoStack undo;
+  Kizuri::EntityId id = scene.CreateEntity("composite");
+  Kizuri::Entity* e = scene.Get(id);
+  if (e == nullptr) {
+    return false;
+  }
+  Kizuri::PartMaterial existing;
+  existing.part = 0;
+  Kizuri::MakeDefaultMaterial(existing.material);
+  e->partMaterials.push_back(existing);
+  Kizuri::MaterialData initial;
+  Kizuri::MakeDefaultMaterial(initial);
+  initial.unlit = true;
+  std::unique_ptr<Kizuri::CompositeCmd> failing(new Kizuri::CompositeCmd("Fail"));
+  failing->Add(std::unique_ptr<Kizuri::Command>(new Kizuri::AddComponentCmd(id, Kizuri::ComponentRegistry::kMaterial, &initial)));
+  failing->Add(std::unique_ptr<Kizuri::Command>(new Kizuri::AddPartMaterialCmd(id, 0, initial)));
+  bool ok = !undo.Execute(std::move(failing), scene);
+  e = scene.Get(id);
+  ok = ok && e != nullptr && !e->hasMaterial && e->partMaterials.size() == 1;
+  if (!ok) {
+    return false;
+  }
+  std::unique_ptr<Kizuri::CompositeCmd> good(new Kizuri::CompositeCmd("Good"));
+  good->Add(std::unique_ptr<Kizuri::Command>(new Kizuri::AddComponentCmd(id, Kizuri::ComponentRegistry::kMaterial, &initial)));
+  good->Add(std::unique_ptr<Kizuri::Command>(new Kizuri::AddPartMaterialCmd(id, 1, initial)));
+  ok = undo.Execute(std::move(good), scene);
+  e = scene.Get(id);
+  ok = ok && e != nullptr && e->hasMaterial && e->partMaterials.size() == 2;
+  ok = ok && undo.Undo(scene);
+  e = scene.Get(id);
+  ok = ok && e != nullptr && !e->hasMaterial && e->partMaterials.size() == 1;
+  ok = ok && undo.Redo(scene);
+  e = scene.Get(id);
+  ok = ok && e != nullptr && e->hasMaterial && e->partMaterials.size() == 2;
+  return ok;
+}
 bool TestPhysicsFall() {
   Kizuri::JobSystem jobs;
   if (!jobs.Initialize()) {
@@ -13699,6 +13861,8 @@ int main() {
   failures += Check("GameWorldFogVolumes", TestGameWorldFogVolumes());
   failures += Check("GameWorldSpotCookies", TestGameWorldSpotCookies());
   failures += Check("GameMaterialParts", TestGameMaterialParts());
+  failures += Check("AddMaterialPreservesParts", TestAddMaterialPreservesParts());
+  failures += Check("CompositeCommand", TestCompositeCommand());
   failures += Check("RigidbodySerialize", TestRigidbodySerialize());
   failures += Check("Ragdoll", TestRagdoll());
   failures += Check("LodCoverage", TestLodCoverage());

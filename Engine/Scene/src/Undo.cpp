@@ -140,6 +140,44 @@ void ComponentSnapshot::Reset() {
   storage = nullptr;
   valid = false;
 }
+CompositeCmd::CompositeCmd(const char* name)
+  : label(name != nullptr ? name : "Composite") {
+}
+void CompositeCmd::Add(std::unique_ptr<Command> cmd) {
+  if (cmd != nullptr) {
+    commands.push_back(std::move(cmd));
+  }
+}
+bool CompositeCmd::Empty() const {
+  return commands.empty();
+}
+bool CompositeCmd::Apply(Scene& scene) {
+  size_t applied = 0;
+  for (size_t i = 0; i < commands.size(); ++i) {
+    if (!commands[i]->Apply(scene)) {
+      for (size_t j = applied; j > 0; --j) {
+        commands[j - 1]->Revert(scene);
+      }
+      return false;
+    }
+    ++applied;
+  }
+  return true;
+}
+bool CompositeCmd::Revert(Scene& scene) {
+  for (size_t i = commands.size(); i > 0; --i) {
+    if (!commands[i - 1]->Revert(scene)) {
+      for (size_t j = i; j < commands.size(); ++j) {
+        commands[j]->Apply(scene);
+      }
+      return false;
+    }
+  }
+  return true;
+}
+const char* CompositeCmd::Name() const {
+  return label.c_str();
+}
 AddComponentCmd::AddComponentCmd(EntityId t, ComponentTypeId ty, const void* initial)
   : target(t)
   , type(ty) {

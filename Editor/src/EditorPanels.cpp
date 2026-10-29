@@ -30,72 +30,6 @@
 #include <filesystem>
 #include <map>
 namespace Kizuri {
-void MaterialDataFromMesh(const MeshMaterialData& mm, MaterialData& m) {
-  m.albedo[0] = mm.albedo[0];
-  m.albedo[1] = mm.albedo[1];
-  m.albedo[2] = mm.albedo[2];
-  m.alpha = mm.alpha;
-  m.metallic = mm.metallic;
-  m.roughness = mm.roughness;
-  m.albedoTex = mm.albedoTexGuid;
-  m.normalTex = mm.normalTexGuid;
-  m.ormTex = mm.ormTexGuid;
-  m.heightTex = mm.heightTexGuid;
-  m.emissive[0] = mm.emissive[0];
-  m.emissive[1] = mm.emissive[1];
-  m.emissive[2] = mm.emissive[2];
-  m.emissiveStrength = mm.emissiveStrength;
-  m.emissiveTex = mm.emissiveTexGuid;
-  m.unlit = mm.unlit;
-  m.doubleSided = mm.doubleSided;
-  m.alphaMode = mm.alphaMode;
-  m.alphaCutoff = mm.alphaCutoff;
-  for (int s = 0; s < 5; ++s) {
-    m.xforms[s].offsetU = mm.xforms[s].offsetU;
-    m.xforms[s].offsetV = mm.xforms[s].offsetV;
-    m.xforms[s].scaleU = mm.xforms[s].scaleU;
-    m.xforms[s].scaleV = mm.xforms[s].scaleV;
-    m.xforms[s].rotation = mm.xforms[s].rotation;
-    m.xforms[s].uvSet = mm.xforms[s].uvSet;
-  }
-  m.ior = mm.ior;
-  m.hasSpecular = mm.hasSpecular;
-  m.specularColor[0] = mm.specularColor[0];
-  m.specularColor[1] = mm.specularColor[1];
-  m.specularColor[2] = mm.specularColor[2];
-  m.specularStrength = mm.specularStrength;
-  m.specularTex = mm.specularTexGuid;
-  m.specularColorTex = mm.specularColorTexGuid;
-  m.clearcoat = mm.clearcoat;
-  m.clearcoatRoughness = mm.clearcoatRoughness;
-  m.clearcoatTex = mm.clearcoatTexGuid;
-  m.clearcoatRoughnessTex = mm.clearcoatRoughnessTexGuid;
-  m.clearcoatNormalTex = mm.clearcoatNormalTexGuid;
-  m.sheenColor[0] = mm.sheenColor[0];
-  m.sheenColor[1] = mm.sheenColor[1];
-  m.sheenColor[2] = mm.sheenColor[2];
-  m.sheenRoughness = mm.sheenRoughness;
-  m.sheenColorTex = mm.sheenColorTexGuid;
-  m.sheenRoughnessTex = mm.sheenRoughnessTexGuid;
-  m.anisotropy = mm.anisotropy;
-  m.anisotropyRotation = mm.anisotropyRotation;
-  m.anisotropyTex = mm.anisotropyTexGuid;
-  m.iridescence = mm.iridescence;
-  m.iridescenceIor = mm.iridescenceIor;
-  m.iridescenceThicknessMin = mm.iridescenceThicknessMin;
-  m.iridescenceThicknessMax = mm.iridescenceThicknessMax;
-  m.iridescenceTex = mm.iridescenceTexGuid;
-  m.iridescenceThicknessTex = mm.iridescenceThicknessTexGuid;
-  m.transmission = mm.transmission;
-  m.transmissionTex = mm.transmissionTexGuid;
-  m.thickness = mm.thickness;
-  m.thicknessTex = mm.thicknessTexGuid;
-  m.attenuationColor[0] = mm.attenuationColor[0];
-  m.attenuationColor[1] = mm.attenuationColor[1];
-  m.attenuationColor[2] = mm.attenuationColor[2];
-  m.attenuationDistance = mm.attenuationDistance;
-  m.dispersion = mm.dispersion;
-}
 static Transform s_clipboard;
 static bool s_hasClipboard = false;
 void EditorApp::RenderScene() {
@@ -3261,24 +3195,28 @@ void EditorApp::DrawInspector() {
         }
       }
       if (!e->hasMaterial && ImGui::MenuItem("Material")) {
-        MaterialData initial;
-        MakeDefaultMaterial(initial);
-        if (e->hasMesh && !e->meshGuid.empty()) {
-          const MeshRecord* rec = assets.GetByGuid(e->meshGuid);
-          if (rec != nullptr && rec->loaded && !rec->data.materials.empty()) {
-            size_t mi = 0;
-            if (!rec->data.parts.empty() && rec->data.parts[0].material < rec->data.materials.size()) {
-              mi = rec->data.parts[0].material;
+        const MeshRecord* rec = (e->hasMesh && !e->meshGuid.empty()) ? assets.GetByGuid(e->meshGuid) : nullptr;
+        if (rec != nullptr && rec->loaded) {
+          const size_t before = e->partMaterials.size();
+          if (undo.Execute(BuildAddMaterialCommand(e->id, *e, rec->data), scene)) {
+            const Entity* added = scene.Get(e->id);
+            const size_t created = (added != nullptr && added->partMaterials.size() > before) ? (added->partMaterials.size() - before) : 0;
+            if (created == 1) {
+              Announce(LogLevel::Info, "Material added; 1 part material preserved as an override");
+            } else if (created > 1) {
+              Announce(LogLevel::Info, "Material added; " + std::to_string(created) + " part materials preserved as overrides");
             }
-            MaterialDataFromMesh(rec->data.materials[mi], initial);
-            if (rec->data.materials.size() > 1) {
-              std::string mname = rec->data.materials[mi].name.empty() ? ("Material " + std::to_string(mi)) : rec->data.materials[mi].name;
-              Announce(LogLevel::Warning, "Mesh has " + std::to_string(rec->data.materials.size()) + " materials; override pre-filled from '" + mname + "' and applies to all parts");
-            }
+          } else {
+            Announce(LogLevel::Error, "Could not add Material");
+          }
+        } else {
+          MaterialData initial;
+          MakeDefaultMaterial(initial);
+          std::unique_ptr<Command> cmd(new AddComponentCmd(e->id, FindComponentType("Material"), &initial));
+          if (!undo.Execute(std::move(cmd), scene)) {
+            Announce(LogLevel::Error, "Could not add Material");
           }
         }
-        std::unique_ptr<Command> cmd(new AddComponentCmd(e->id, FindComponentType("Material"), &initial));
-        undo.Execute(std::move(cmd), scene);
       }
       ImGui::EndPopup();
     }
@@ -4131,22 +4069,14 @@ void EditorApp::DrawPartMaterials(Entity* e) {
       std::string btn = "Override##part" + std::to_string(p);
       if (ImGui::SmallButton(btn.c_str())) {
         MaterialData initial;
+        MakeDefaultMaterial(initial);
         if (e->hasMaterial) {
           initial = e->material;
-        } else if (part.material < rec->data.materials.size()) {
-          uint32_t matIdx = part.material;
-          if (e->variantIndex >= 0) {
-            for (size_t vi = 0; vi < rec->data.variantAssigns.size(); ++vi) {
-              const MeshVariantAssign& va = rec->data.variantAssigns[vi];
-              if (va.part == static_cast<uint32_t>(p) && static_cast<int>(va.variant) == e->variantIndex && va.material < rec->data.materials.size()) {
-                matIdx = va.material;
-                break;
-              }
-            }
-          }
-          MaterialDataFromMesh(rec->data.materials[matIdx], initial);
         } else {
-          MakeDefaultMaterial(initial);
+          const uint32_t matIdx = ResolveMeshMaterialIndex(rec->data, *e, p);
+          if (matIdx != 0xFFFFFFFFu) {
+            MaterialDataFromMesh(rec->data.materials[matIdx], initial);
+          }
         }
         std::unique_ptr<Command> cmd(new AddPartMaterialCmd(e->id, static_cast<uint32_t>(p), initial));
         undo.Execute(std::move(cmd), scene);
