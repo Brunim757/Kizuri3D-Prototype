@@ -8351,15 +8351,16 @@ bool TestTessellationVelocityShaders() {
   if (!LoadShaderText("TessHS.hlsl", geoHS) || !LoadShaderText("TessDS.hlsl", geoDS)) {
     return false;
   }
-  const char* vsRequired[6] = {
+  const char* vsRequired[7] = {
     "row_major float4x4 PrevWorld;",
-    "float3 prevWpos = mul(float4(vin.pos, 1.0), PrevWorld).xyz;",
+    "float4 pwp = mul(float4(vin.pos, 1.0), PrevWorld);",
+    "o.prevWpos = pwp.xyz;",
     "NormalMatrix(pwrot)",
     "o.prevNrm = normalize",
     "o.uv = vin.uv;",
     "o.uv2 = vin.uv2;"
   };
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 7; ++i) {
     if (vs.find(vsRequired[i]) == std::string::npos) {
       return false;
     }
