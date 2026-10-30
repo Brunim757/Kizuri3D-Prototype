@@ -2338,6 +2338,7 @@ private:
     }
     if (cl.Get() != nullptr) {
       context->ExecuteCommandList(cl.Get(), FALSE);
+      immCache.ResetFresh();
     }
   }
   void SetComputeTexture(uint32_t slot, RHITexture tex) override {

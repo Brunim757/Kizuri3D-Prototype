@@ -17,7 +17,7 @@ struct GeoConstants {
   float prevViewProj[16] = {};
   float motion[4] = {};
 };
-struct VelocityConstants {
+struct MaterialTestConstants {
   float misc[4];
   float uvA[4];
   float uvB[4];
@@ -696,6 +696,8 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   std::string velocityPSPath = dir + "/VelocityPS.hlsl";
   std::string lightVSPath = dir + "/LightingVS.hlsl";
   std::string lightPSPath = dir + "/LightingPS.hlsl";
+  std::string shadowVSPath = dir + "/ShadowVS.hlsl";
+  std::string shadowPSPath = dir + "/ShadowPS.hlsl";
   std::string depthVSPath = dir + "/DepthVS.hlsl";
   std::string decalVSPath = dir + "/DecalVS.hlsl";
   std::string decalPSPath = dir + "/DecalPS.hlsl";
@@ -952,6 +954,12 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   if (uvPS == 0) {
     return false;
   }
+  shadowVS = LoadVertexShader(shadowVSPath.c_str());
+  shadowVSSkinned = LoadVertexShader(shadowVSPath.c_str(), "SkinnedMain");
+  shadowPS = LoadPixelShader(shadowPSPath.c_str());
+  if (shadowVS == 0 || shadowVSSkinned == 0 || shadowPS == 0) {
+    return false;
+  }
   float debugInit[56] = { 0.0f };
   debugCB = rhi->CreateConstantBuffer(sizeof(debugInit), &debugInit);
   if (debugCB == 0) {
@@ -1059,9 +1067,16 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   SsrConstants sc;
   std::memset(&sc, 0, sizeof(sc));
   geoCB = rhi->CreateConstantBuffer(sizeof(GeoConstants), &gc);
-  VelocityConstants velocityInit;
+  MaterialTestConstants velocityInit;
   std::memset(&velocityInit, 0, sizeof(velocityInit));
   velocityCB = rhi->CreateConstantBuffer(sizeof(velocityInit), &velocityInit);
+  geoCBShadow = rhi->CreateConstantBuffer(sizeof(GeoConstants), &gc);
+  shadowCB = rhi->CreateConstantBuffer(sizeof(velocityInit), &velocityInit);
+  float tessShadowInit[4] = { 4.0f, 0.15f, 0.0f, 0.0f };
+  tessCBShadow = rhi->CreateConstantBuffer(sizeof(tessShadowInit), tessShadowInit);
+  if (geoCBShadow == 0 || shadowCB == 0 || tessCBShadow == 0) {
+    return false;
+  }
   uint32_t boneInit[4] = { 0, 0, 0, 0 };
   boneCB = rhi->CreateConstantBuffer(sizeof(boneInit), boneInit);
   boneCBShadow = rhi->CreateConstantBuffer(sizeof(boneInit), boneInit);
@@ -1387,6 +1402,18 @@ void DeferredRenderer::Shutdown() {
   if (velocityCB != 0) {
     rhi->DestroyConstantBuffer(velocityCB);
     velocityCB = 0;
+  }
+  if (geoCBShadow != 0) {
+    rhi->DestroyConstantBuffer(geoCBShadow);
+    geoCBShadow = 0;
+  }
+  if (tessCBShadow != 0) {
+    rhi->DestroyConstantBuffer(tessCBShadow);
+    tessCBShadow = 0;
+  }
+  if (shadowCB != 0) {
+    rhi->DestroyConstantBuffer(shadowCB);
+    shadowCB = 0;
   }
   if (boneBuf != 0) {
     rhi->DestroyStructBuffer(boneBuf);
@@ -3140,7 +3167,7 @@ void DeferredRenderer::RenderShadowMaps() {
   RHIBlend sblend;
   sblend.enable = false;
   rhi->SetBlendState(sblend);
-  rhi->SetVertexConstantBuffer(0, geoCB);
+  rhi->SetVertexConstantBuffer(0, geoCBShadow);
   int slot = 0;
   for (int d = 0; d < dirCount; ++d) {
     int start = plan.dirTileStart[d];
@@ -3191,8 +3218,8 @@ void DeferredRenderer::RenderShadowMaps() {
         std::memcpy(gc.world, shadowDraws[di].world, sizeof(gc.world));
         std::memcpy(gc.view, identity, sizeof(gc.view));
         std::memcpy(gc.proj, vp, sizeof(gc.proj));
-        rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-        DrawCasterVS(shadowDraws[di], depthVS, depthVSSkinned, boneCBShadow);
+        rhi->UpdateConstantBuffer(geoCBShadow, &gc, sizeof(gc));
+        DrawShadowCaster(shadowDraws[di]);
         ++stats.shadowDraws;
         stats.shadowTris += shadowDraws[di].count / 3;
       }
@@ -3237,8 +3264,8 @@ void DeferredRenderer::RenderShadowMaps() {
       std::memcpy(gc.world, shadowDraws[di].world, sizeof(gc.world));
       std::memcpy(gc.view, identity, sizeof(gc.view));
       std::memcpy(gc.proj, vp, sizeof(gc.proj));
-      rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-      DrawCasterVS(shadowDraws[di], depthVS, depthVSSkinned, boneCBShadow);
+      rhi->UpdateConstantBuffer(geoCBShadow, &gc, sizeof(gc));
+      DrawShadowCaster(shadowDraws[di]);
       ++stats.shadowDraws;
       stats.shadowTris += shadowDraws[di].count / 3;
     }
@@ -3272,8 +3299,8 @@ void DeferredRenderer::RenderShadowMaps() {
         std::memcpy(gc.world, shadowDraws[di].world, sizeof(gc.world));
         std::memcpy(gc.view, identity, sizeof(gc.view));
         std::memcpy(gc.proj, faces[f], sizeof(gc.proj));
-        rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-        DrawCasterVS(shadowDraws[di], depthVS, depthVSSkinned, boneCBShadow);
+        rhi->UpdateConstantBuffer(geoCBShadow, &gc, sizeof(gc));
+        DrawShadowCaster(shadowDraws[di]);
         ++stats.shadowDraws;
         stats.shadowTris += shadowDraws[di].count / 3;
       }
@@ -3282,6 +3309,21 @@ void DeferredRenderer::RenderShadowMaps() {
   shadowMapsValid = shadowCascadeActive > 0 || shadowSpotActive > 0 || shadowPointActive;
   lastCasterHash = casterHash;
   hasCasterHash = true;
+  rhi->SetTopology(RHITopology::TriangleList);
+  rhi->SetHullShader(0);
+  rhi->SetDomainShader(0);
+  rhi->SetHullConstantBuffer(0, 0);
+  rhi->SetDomainConstantBuffer(0, 0);
+  rhi->SetDomainConstantBuffer(1, 0);
+  rhi->SetDomainTexture(0, 0);
+  rhi->SetDomainSampler(0, 0);
+  rhi->SetPixelTexture2D(0, 0);
+  rhi->SetPixelTexture2D(1, 0);
+  rhi->SetPixelTexture2D(2, 0);
+  rhi->SetVertexSRV(0, 0);
+  rhi->SetVertexShader(0);
+  rhi->SetPixelShader(0);
+  rhi->SetInputLayout(0);
   UpdateShadowMoments();
 }
 bool DeferredRenderer::RequestResize(int nw, int nh) {
@@ -3711,6 +3753,9 @@ uint64_t DeferredRenderer::CasterHash() const {
   mix(&mainCam.farZ, sizeof(float));
   mix(lastViewU, sizeof(lastViewU));
   mix(lastProjU, sizeof(lastProjU));
+  mix(&tessOn, sizeof(tessOn));
+  mix(&tessFactor, sizeof(tessFactor));
+  mix(&tessDisp, sizeof(tessDisp));
   size_t np = pointLights.size();
   size_t ns = spotLights.size();
   size_t nd = dirLights.size();
@@ -3764,6 +3809,18 @@ uint64_t DeferredRenderer::CasterHash() const {
     mix(&sd.count, sizeof(sd.count));
     mix(&sd.boneOffset, sizeof(sd.boneOffset));
     mix(&sd.boneCount, sizeof(sd.boneCount));
+    mix(&sd.doubleSided, sizeof(sd.doubleSided));
+    mix(&sd.alphaMode, sizeof(sd.alphaMode));
+    mix(&sd.texFlags, sizeof(sd.texFlags));
+    mix(&sd.alpha, sizeof(sd.alpha));
+    mix(&sd.alphaCutoff, sizeof(sd.alphaCutoff));
+    mix(&sd.lodFade, sizeof(sd.lodFade));
+    mix(&sd.vtResidentMip, sizeof(sd.vtResidentMip));
+    mix(&sd.albedoTex, sizeof(sd.albedoTex));
+    mix(&sd.vtTable, sizeof(sd.vtTable));
+    mix(&sd.vtTail, sizeof(sd.vtTail));
+    mix(&sd.heightTex, sizeof(sd.heightTex));
+    mix(&sd.uvXform, sizeof(sd.uvXform));
   }
   return h == 0 ? 1 : h;
 }
@@ -4285,6 +4342,7 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
   const bool skinned = useBoneCount > 0;
   const bool hasPrev = transformPrev && (!skinned || bonesPrev);
   const bool motion = hasPrev && (worldMoved || (skinned && bonesMoved));
+  const DeferredMaterial& use = (mat != nullptr) ? *mat : material;
   ShadowDrawItem item;
   std::memcpy(item.world, world, sizeof(item.world));
   item.vb = vb;
@@ -4293,11 +4351,22 @@ void DeferredRenderer::DrawObjectEx(const float world[16], RHIBuffer vb, RHIBuff
   item.count = count;
   item.boneOffset = useBoneOffset;
   item.boneCount = useBoneCount;
+  item.doubleSided = use.doubleSided;
+  item.alphaMode = use.alphaMode;
+  item.texFlags = use.texFlags;
+  item.alpha = use.alpha;
+  item.alphaCutoff = use.alphaCutoff;
+  item.lodFade = lodFade < 0.0f ? 0.0f : (lodFade > 1.0f ? 1.0f : lodFade);
+  item.vtResidentMip = use.vtResidentMip;
+  item.albedoTex = use.albedoTex;
+  item.vtTable = use.vtTable;
+  item.vtTail = use.vtTail;
+  item.heightTex = use.heightTex;
+  item.uvXform = use.xforms[0];
   shadowDraws.push_back(item);
   if (CullWorldAABB(world, aabbMin, aabbMax)) {
     return;
   }
-  const DeferredMaterial& use = (mat != nullptr) ? *mat : material;
   if (motion) {
     VelocityDrawItem vi;
     std::memcpy(vi.world, world, sizeof(vi.world));
@@ -4640,6 +4709,73 @@ void DeferredRenderer::DrawCasterVS(const ShadowDrawItem& item, RHIVertexShader 
     rhi->SetVertexShader(vs);
     rhi->SetInputLayout(layout);
     rhi->SetVertexSRV(0, 0);
+  }
+  rhi->SetVertexBuffer(item.vb, 0);
+  rhi->SetIndexBuffer(item.ib);
+  rhi->DrawIndexed(item.count, item.start, 0);
+}
+void DeferredRenderer::DrawShadowCaster(const ShadowDrawItem& item) {
+  bool skinned = item.boneCount > 0 && item.boneOffset != 0xFFFFFFFFu;
+  bool tessellated = !skinned && tessOn && tessHS != 0 && tessDS != 0 && tessCBShadow != 0;
+  bool hasHeight = tessellated && (item.texFlags & 8u) != 0 && item.heightTex != 0;
+  RHIRasterizer srs;
+  srs.cull = item.doubleSided ? RHICull::None : RHICull::Back;
+  srs.fill = RHIFill::Solid;
+  srs.frontCCW = false;
+  srs.slopeBias = 2.0f;
+  rhi->SetRasterizerState(srs);
+  MaterialTestConstants vc;
+  std::memset(&vc, 0, sizeof(vc));
+  vc.misc[0] = item.alphaCutoff;
+  vc.misc[1] = static_cast<float>(item.alphaMode);
+  std::memcpy(&vc.misc[2], &item.texFlags, sizeof(item.texFlags));
+  vc.misc[3] = item.alpha;
+  vc.uvA[0] = item.uvXform.offsetU;
+  vc.uvA[1] = item.uvXform.offsetV;
+  vc.uvA[2] = item.uvXform.scaleU;
+  vc.uvA[3] = item.uvXform.scaleV;
+  vc.uvB[0] = item.uvXform.rotation;
+  vc.uvB[1] = static_cast<float>(item.uvXform.uvSet);
+  vc.extra[0] = item.lodFade;
+  vc.extra[1] = item.vtResidentMip;
+  rhi->UpdateConstantBuffer(shadowCB, &vc, sizeof(vc));
+  rhi->SetVertexConstantBuffer(0, geoCBShadow);
+  rhi->SetPixelConstantBuffer(0, shadowCB);
+  rhi->SetPixelShader(shadowPS);
+  rhi->SetPixelSampler(0, geoSampler);
+  rhi->SetPixelTexture2D(0, item.albedoTex != 0 ? item.albedoTex : neutralAlbedo);
+  rhi->SetPixelTexture2D(1, item.vtTail != 0 ? item.vtTail : neutralBlack);
+  rhi->SetPixelTexture2D(2, item.vtTable != 0 ? item.vtTable : neutralBlack);
+  if (tessellated) {
+    float tc[4] = { tessFactor, tessDisp, hasHeight ? 1.0f : 0.0f, 0.0f };
+    rhi->UpdateConstantBuffer(tessCBShadow, &tc, sizeof(tc));
+    rhi->SetTopology(RHITopology::Patch3);
+    rhi->SetHullShader(tessHS);
+    rhi->SetDomainShader(tessDS);
+    rhi->SetHullConstantBuffer(0, tessCBShadow);
+    rhi->SetDomainConstantBuffer(0, geoCBShadow);
+    rhi->SetDomainConstantBuffer(1, tessCBShadow);
+    rhi->SetDomainTexture(0, hasHeight ? item.heightTex : neutralBlack);
+    rhi->SetDomainSampler(0, geoSampler);
+    rhi->SetVertexShader(geoVS);
+    rhi->SetInputLayout(layout);
+    rhi->SetVertexSRV(0, 0);
+  } else {
+    rhi->SetTopology(RHITopology::TriangleList);
+    rhi->SetHullShader(0);
+    rhi->SetDomainShader(0);
+    if (skinned) {
+      uint32_t boneData[4] = { item.boneOffset, 0, 0, 0 };
+      rhi->UpdateConstantBuffer(boneCBShadow, boneData, sizeof(boneData));
+      rhi->SetVertexConstantBuffer(1, boneCBShadow);
+      rhi->SetVertexShader(shadowVSSkinned);
+      rhi->SetInputLayout(skinnedLayout);
+      rhi->SetVertexSRV(0, boneBuf);
+    } else {
+      rhi->SetVertexShader(shadowVS);
+      rhi->SetInputLayout(layout);
+      rhi->SetVertexSRV(0, 0);
+    }
   }
   rhi->SetVertexBuffer(item.vb, 0);
   rhi->SetIndexBuffer(item.ib);
@@ -4999,7 +5135,7 @@ void DeferredRenderer::RenderVelocityPass() {
     std::memcpy(gc.prevViewProj, motionPrevVP, sizeof(gc.prevViewProj));
     gc.motion[0] = item.hasPrev ? 1.0f : 0.0f;
     rhi->UpdateConstantBuffer(geoCB, &gc, sizeof(gc));
-    VelocityConstants vc;
+    MaterialTestConstants vc;
     std::memset(&vc, 0, sizeof(vc));
     vc.misc[0] = item.alphaCutoff;
     vc.misc[1] = static_cast<float>(item.alphaMode);

@@ -119,6 +119,10 @@ Futuro
 - [x] Shadow atlas
 - [x] Shadow caching
 - [x] Shadow resolution dinâmica
+- [x] Alpha cutout nos casters
+- [x] Dither de LOD nos casters
+- [x] Tessellation/displacement nos casters
+- [x] Culling double-sided nos casters
 - [x] Cascades configuráveis
 - [x] Distance-based shadow quality
 

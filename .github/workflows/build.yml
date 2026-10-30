@@ -40,6 +40,7 @@ jobs:
             "DepthVS.hlsl" = @("main", "SkinnedMain")
             "UvVS.hlsl" = @("main", "SkinnedMain")
             "VelocityVS.hlsl" = @("main", "SkinnedMain")
+            "ShadowVS.hlsl" = @("main", "SkinnedMain")
           }
           $failed = $false
           Get-ChildItem "Shaders/*.hlsl" -Exclude "Fsr*" | ForEach-Object {

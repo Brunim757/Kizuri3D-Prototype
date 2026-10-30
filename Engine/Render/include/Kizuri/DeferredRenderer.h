@@ -159,6 +159,18 @@ struct ShadowDrawItem {
   uint32_t count;
   uint32_t boneOffset;
   uint32_t boneCount;
+  bool doubleSided;
+  int alphaMode;
+  uint32_t texFlags;
+  float alpha;
+  float alphaCutoff;
+  float lodFade;
+  float vtResidentMip;
+  RHITexture albedoTex;
+  RHITexture vtTable;
+  RHITexture vtTail;
+  RHITexture heightTex;
+  DeferredUvXform uvXform;
 };
 struct DecalDrawItem {
   float world[16];
@@ -447,6 +459,9 @@ public:
   RHIBuffer vb;
   RHIBuffer ib;
   RHIConstBuffer geoCB;
+  RHIConstBuffer geoCBShadow = 0;
+  RHIConstBuffer tessCBShadow = 0;
+  RHIConstBuffer shadowCB = 0;
   RHIConstBuffer velocityCB = 0;
   RHIStructBuffer boneBuf;
   RHIStructBuffer prevBoneBuf = 0;
@@ -506,6 +521,9 @@ public:
   RHIPixelShader lightPS;
   RHIVertexShader depthVS;
   RHIVertexShader depthVSSkinned;
+  RHIVertexShader shadowVS = 0;
+  RHIVertexShader shadowVSSkinned = 0;
+  RHIPixelShader shadowPS = 0;
   RHIVertexShader decalVS;
   RHIPixelShader decalPS;
   RHIPixelShader decalMatsPS;
@@ -623,6 +641,7 @@ public:
   void FlushGeoQueue();
   void UploadBones();
   void DrawCasterVS(const ShadowDrawItem& item, RHIVertexShader vs, RHIVertexShader skinnedVS, RHIConstBuffer boneBuffer);
+  void DrawShadowCaster(const ShadowDrawItem& item);
   bool shadowCacheOn;
   bool shadowAutoRes;
   int shadowStreak;

@@ -5549,10 +5549,10 @@ bool TestPBR() {
 }
 bool TestShaderFiles() {
   const char* dirs[3] = { "Shaders", "Samples/../Shaders", "build/bin/Release/Shaders" };
-  const char* files[10] = { "GeometryVS.hlsl", "GeometryPS.hlsl", "LightingVS.hlsl", "LightingPS.hlsl", "DepthVS.hlsl", "VelocityVS.hlsl", "VelocityPS.hlsl", "VelocityTessVS.hlsl", "VelocityTessHS.hlsl", "VelocityTessDS.hlsl" };
+  const char* files[12] = { "GeometryVS.hlsl", "GeometryPS.hlsl", "LightingVS.hlsl", "LightingPS.hlsl", "DepthVS.hlsl", "VelocityVS.hlsl", "VelocityPS.hlsl", "VelocityTessVS.hlsl", "VelocityTessHS.hlsl", "VelocityTessDS.hlsl", "ShadowVS.hlsl", "ShadowPS.hlsl" };
   for (int d = 0; d < 3; ++d) {
     bool allOk = true;
-    for (int f = 0; f < 10; ++f) {
+    for (int f = 0; f < 12; ++f) {
       char path[512];
       std::snprintf(path, sizeof(path), "%s/%s", dirs[d], files[f]);
       FILE* fp = std::fopen(path, "rb");
@@ -8406,6 +8406,49 @@ bool TestTessellationVelocityShaders() {
     return false;
   }
   return ds.find("float2 uv = patch[0].uv") < ds.find("HeightTex.SampleLevel");
+}
+bool TestShadowShaders() {
+  std::string vs;
+  std::string ps;
+  std::string velocityPS;
+  if (!LoadShaderText("ShadowVS.hlsl", vs) || !LoadShaderText("ShadowPS.hlsl", ps) || !LoadShaderText("VelocityPS.hlsl", velocityPS)) {
+    return false;
+  }
+  const char* vsRequired[6] = {
+    "float2 uv : TEXCOORD1;",
+    "float2 uv2 : TEXCOORD5;",
+    "o.pos = mul(vp, Proj);",
+    "VSOut SkinnedMain(VSInSkinned vin)",
+    "StructuredBuffer<float4> BoneRows : register(t0);",
+    "uint4 joints : BLENDINDICES;"
+  };
+  for (int i = 0; i < 6; ++i) {
+    if (vs.find(vsRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  const char* psRequired[7] = {
+    "float2 uv : TEXCOORD1;",
+    "float2 uv2 : TEXCOORD5;",
+    "int alphaMode = (int) Misc.y;",
+    "alpha *= AlbedoTex.Sample(GeoSamp, pov).a;",
+    "alpha *= VtTail.SampleLevel(GeoSamp, pov, 0).a;",
+    "if (alpha < Misc.x)",
+    "if (h > fade)"
+  };
+  for (int i = 0; i < 7; ++i) {
+    if (ps.find(psRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  if (ps.find("SV_Target") != std::string::npos) {
+    return false;
+  }
+  const char* cutoffLine = "if (alpha < Misc.x) {\n            discard;\n        }";
+  if (ps.find(cutoffLine) == std::string::npos) {
+    return false;
+  }
+  return velocityPS.find(cutoffLine) != std::string::npos;
 }
 bool TestTaaHistory() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
@@ -14266,6 +14309,7 @@ int main() {
   failures += Check("TaaVelocity", TestTaaVelocity());
   failures += Check("VelocityShaders", TestVelocityShaders());
   failures += Check("TessellationVelocityShaders", TestTessellationVelocityShaders());
+  failures += Check("ShadowShaders", TestShadowShaders());
   failures += Check("AutoExposure", TestAutoExposure());
   failures += Check("CubeLut", TestCubeLut());
   failures += Check("HdrSky", TestHdrSky());
