@@ -220,11 +220,8 @@ float CelEdge(float3 wpos, float3 N, float2 uv, float width, float2 texel)
     }
     return edge;
 }
-float3 ShadeOne(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0, Lobes lb, float4 cel)
+float3 ShadePbr(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0, Lobes lb)
 {
-    if (cel.x > 0.5) {
-        return ShadeCel(N, V, L, lightColor, albedo, F0, metallic, cel);
-    }
     float3 H = normalize(L + V);
     float rawLi = dot(N, L);
     float cosLi = saturate(rawLi);
@@ -285,6 +282,16 @@ float3 ShadeOne(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, 
     float3 sssCol = albedo * trans;
     float3 base = (diff * wrapLi + spec * cosLi + sssCol) * (1.0 - ccF) + sheenAcc * (1.0 - ccF);
     return base * lightColor + ccSpec * lb.cc * lightColor * cosLi;
+}
+float3 ShadeOne(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0, Lobes lb, float4 cel)
+{
+    float3 result = float3(0.0, 0.0, 0.0);
+    if (cel.x > 0.5) {
+        result = ShadeCel(N, V, L, lightColor, albedo, F0, metallic, cel);
+    } else {
+        result = ShadePbr(N, V, L, lightColor, albedo, roughness, metallic, F0, lb);
+    }
+    return result;
 }
 float3 ShadeSss(float3 N, float3 L, float3 lightColor, float3 albedo, float3 tint, float amt, float wrap)
 {

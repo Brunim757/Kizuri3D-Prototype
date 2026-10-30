@@ -73,7 +73,7 @@ O primeiro jogo impõe requisitos técnicos que a engine precisa suportar de ver
 A mesma base deve suportar:
 
 - **Souls-like:** combate comprometido, stamina, lock-on, boss fights, level design interconectado, checkpoint e progressão. Nada disso vive no núcleo; é camada de gameplay.
-- **Cel shading:** rampa de iluminação, contornos, especular estilizado, sombras pintadas e pós-processamento próprio, selecionável por material e por câmera.
+- **Cel shading:** modo de material com rampa quantizada de luz direta e ambiente, contorno por normal/depth, especular estilizado e rim; convive com PBR na mesma cena e não substitui o caminho padrão.
 - **Outros estilos 3D:** a arquitetura não pode impedir FPS, RPG, survival, plataforma ou projetos experimentais.
 
 ---

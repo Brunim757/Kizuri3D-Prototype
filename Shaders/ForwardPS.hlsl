@@ -496,11 +496,8 @@ float3 ShadeCelFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albed
     base += albedo * rim * cel.w * 0.5;
     return base * lightColor;
 }
-float3 ShadeFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0, float4 cel)
+float3 ShadePbrFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0)
 {
-    if (cel.x > 0.5) {
-        return ShadeCelFwd(N, V, L, lightColor, albedo, F0, metallic, cel);
-    }
     float3 H = normalize(L + V);
     float cosLi = saturate(dot(N, L));
     float cosLo = saturate(dot(N, V));
@@ -515,6 +512,16 @@ float3 ShadeFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, 
     float wrapLi = saturate((dot(N, L) + 0.5) / 1.5);
     wrapLi *= wrapLi;
     return (kd * albedo / 3.14159265 * wrapLi + spec * cosLi) * lightColor;
+}
+float3 ShadeFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0, float4 cel)
+{
+    float3 result = float3(0.0, 0.0, 0.0);
+    if (cel.x > 0.5) {
+        result = ShadeCelFwd(N, V, L, lightColor, albedo, F0, metallic, cel);
+    } else {
+        result = ShadePbrFwd(N, V, L, lightColor, albedo, roughness, metallic, F0);
+    }
+    return result;
 }
 float3 ShadeSssFwd(float3 N, float3 L, float3 lightColor, float3 albedo, float3 tint, float amt, float wrap)
 {
