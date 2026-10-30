@@ -167,6 +167,8 @@ const InspectorFieldDesc kMaterialFields[] = {
   { "Cel Outline", offsetof(MaterialData, celOutline), InspectorFieldKind::Float, 0.01f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
   { "Cel Outline Width", offsetof(MaterialData, celOutlineWidth), InspectorFieldKind::Float, 0.05f, 0.5f, 4.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
   { "Cel Outline Color", offsetof(MaterialData, celOutlineColor), InspectorFieldKind::Color3, 1.0f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
+  { "Cel Shadow", offsetof(MaterialData, celShadow), InspectorFieldKind::Float, 0.01f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
+  { "Cel Shadow Tint", offsetof(MaterialData, celShadowTint), InspectorFieldKind::Color3, 1.0f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
   { "IOR", offsetof(MaterialData, ior), InspectorFieldKind::Float, 0.01f, 1.0f, 3.0f },
   { "Specular", offsetof(MaterialData, hasSpecular), InspectorFieldKind::Bool },
   { "Specular Color", offsetof(MaterialData, specularColor), InspectorFieldKind::Color3 },
@@ -491,6 +493,9 @@ bool MaterialEqual(const MaterialData& a, const MaterialData& b) {
     return false;
   }
   if (a.celOutline != b.celOutline || a.celOutlineWidth != b.celOutlineWidth || !Float3Equal(a.celOutlineColor, b.celOutlineColor)) {
+    return false;
+  }
+  if (a.celShadow != b.celShadow || !Float3Equal(a.celShadowTint, b.celShadowTint)) {
     return false;
   }
   for (int s = 0; s < 5; ++s) {

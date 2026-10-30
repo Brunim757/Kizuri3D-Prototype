@@ -623,6 +623,7 @@ float4 main(PSIn pin) : SV_Target
     float4 celRawF = CelTX.Load(int3((int) celRow, 0, 0));
     float4 celInfoF = float4(celRawF.r, 1.0 + celRawF.g * 7.0, celRawF.b, celRawF.a);
     float celOnF = celInfoF.x > 0.5 ? 1.0 : 0.0;
+    float4 celShadowRowF = CelTX.Load(int3((int) celRow, 3, 0));
     float3 fwdTan = normalize(pin.wtan.xyz - n * dot(n, pin.wtan.xyz) + 1e-6);
     float3 col = ShadeFwd(n, V, Lsun, LightColor.rgb, alb, rough, metal, F0, celInfoF);
     col += ShadeSssFwd(n, Lsun, LightColor.rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * (1.0 - celOnF);
@@ -670,7 +671,14 @@ float4 main(PSIn pin) : SV_Target
                     }
                 }
             }
-            col += ShadeFwd(n, V, Ld, LightC[i].rgb, alb, rough, metal, F0, celInfoF) * dirShadow;
+            float3 directF = ShadeFwd(n, V, Ld, LightC[i].rgb, alb, rough, metal, F0, celInfoF);
+            if (celOnF > 0.5 && celShadowRowF.a > 0.001) {
+                float shadowMixF = (1.0 - dirShadow) * celShadowRowF.a;
+                directF = lerp(directF * dirShadow, alb * celShadowRowF.rgb, shadowMixF);
+            } else {
+                directF *= dirShadow;
+            }
+            col += directF;
             col += ShadeSssFwd(n, Ld, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * dirShadow * (1.0 - celOnF);
             col += ShadeHairFwd(n, fwdTan, V, Ld, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * dirShadow * (1.0 - celOnF);
         } else {

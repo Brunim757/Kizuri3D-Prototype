@@ -176,6 +176,10 @@ void FillDeferredFromEntity(AssetDatabase& assets, const MaterialData& m, Deferr
   partMat.celOutlineColor[0] = m.celOutlineColor[0] < 0.0f ? 0.0f : (m.celOutlineColor[0] > 1.0f ? 1.0f : m.celOutlineColor[0]);
   partMat.celOutlineColor[1] = m.celOutlineColor[1] < 0.0f ? 0.0f : (m.celOutlineColor[1] > 1.0f ? 1.0f : m.celOutlineColor[1]);
   partMat.celOutlineColor[2] = m.celOutlineColor[2] < 0.0f ? 0.0f : (m.celOutlineColor[2] > 1.0f ? 1.0f : m.celOutlineColor[2]);
+  partMat.celShadow = m.celShadow < 0.0f ? 0.0f : (m.celShadow > 1.0f ? 1.0f : m.celShadow);
+  partMat.celShadowTint[0] = m.celShadowTint[0] < 0.0f ? 0.0f : (m.celShadowTint[0] > 1.0f ? 1.0f : m.celShadowTint[0]);
+  partMat.celShadowTint[1] = m.celShadowTint[1] < 0.0f ? 0.0f : (m.celShadowTint[1] > 1.0f ? 1.0f : m.celShadowTint[1]);
+  partMat.celShadowTint[2] = m.celShadowTint[2] < 0.0f ? 0.0f : (m.celShadowTint[2] > 1.0f ? 1.0f : m.celShadowTint[2]);
   for (int s = 0; s < 5; ++s) {
     partMat.xforms[s].offsetU = m.xforms[s].offsetU;
     partMat.xforms[s].offsetV = m.xforms[s].offsetV;
@@ -303,6 +307,10 @@ void FillDeferredFromMesh(AssetDatabase& assets, const MeshMaterialData& mm, Def
   partMat.celOutlineColor[0] = 0.02f;
   partMat.celOutlineColor[1] = 0.02f;
   partMat.celOutlineColor[2] = 0.03f;
+  partMat.celShadow = 0.0f;
+  partMat.celShadowTint[0] = 0.55f;
+  partMat.celShadowTint[1] = 0.6f;
+  partMat.celShadowTint[2] = 0.85f;
   partMat.albedo[0] = mm.albedo[0];
   partMat.albedo[1] = mm.albedo[1];
   partMat.albedo[2] = mm.albedo[2];

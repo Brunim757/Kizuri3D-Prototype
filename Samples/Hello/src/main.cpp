@@ -3681,6 +3681,16 @@ bool TestComponentEquality() {
   if (Kizuri::MaterialEqual(a, b)) {
     return false;
   }
+  b = a;
+  b.celShadow = 0.4f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
+  b = a;
+  b.celShadowTint[2] = 0.4f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
   Kizuri::PostData p;
   Kizuri::MakeDefaultPost(p);
   Kizuri::PostData q = p;
@@ -8248,6 +8258,9 @@ bool TestCelShading() {
   if (defaults.celOutlineColor[0] != 0.02f || defaults.celOutlineColor[1] != 0.02f || defaults.celOutlineColor[2] != 0.03f) {
     return false;
   }
+  if (defaults.celShadow != 0.0f || defaults.celShadowTint[0] != 0.55f || defaults.celShadowTint[1] != 0.6f || defaults.celShadowTint[2] != 0.85f) {
+    return false;
+  }
   const int styleCount = Kizuri::CelStyleCount();
   if (styleCount != 4) {
     return false;
@@ -8270,8 +8283,14 @@ bool TestCelShading() {
     if (styled.celOutline < 0.0f || styled.celOutline > 1.0f || styled.celOutlineWidth < 0.5f || styled.celOutlineWidth > 4.0f) {
       return false;
     }
+    if (styled.celShadow < 0.0f || styled.celShadow > 1.0f) {
+      return false;
+    }
     for (int c = 0; c < 3; ++c) {
       if (styled.celOutlineColor[c] < 0.0f || styled.celOutlineColor[c] > 1.0f) {
+        return false;
+      }
+      if (styled.celShadowTint[c] < 0.0f || styled.celShadowTint[c] > 1.0f) {
         return false;
       }
     }
@@ -8313,6 +8332,10 @@ bool TestCelShading() {
   e->material.celOutlineColor[0] = 0.11f;
   e->material.celOutlineColor[1] = 0.22f;
   e->material.celOutlineColor[2] = 0.33f;
+  e->material.celShadow = 0.3f;
+  e->material.celShadowTint[0] = 0.12f;
+  e->material.celShadowTint[1] = 0.34f;
+  e->material.celShadowTint[2] = 0.56f;
   Kizuri::PartMaterial part;
   part.part = 3;
   Kizuri::MakeDefaultMaterial(part.material);
@@ -8325,6 +8348,10 @@ bool TestCelShading() {
   part.material.celOutlineColor[0] = 0.44f;
   part.material.celOutlineColor[1] = 0.55f;
   part.material.celOutlineColor[2] = 0.66f;
+  part.material.celShadow = 0.75f;
+  part.material.celShadowTint[0] = 0.21f;
+  part.material.celShadowTint[1] = 0.43f;
+  part.material.celShadowTint[2] = 0.65f;
   e->partMaterials.push_back(part);
   const char* path = "kizuri_test_cel_tmp.kzscene";
   std::remove(path);
@@ -8355,6 +8382,9 @@ bool TestCelShading() {
   if (std::fabs(m.celOutlineColor[0] - 0.11f) > 1e-5f || std::fabs(m.celOutlineColor[1] - 0.22f) > 1e-5f || std::fabs(m.celOutlineColor[2] - 0.33f) > 1e-5f) {
     return false;
   }
+  if (std::fabs(m.celShadow - 0.3f) > 1e-5f || std::fabs(m.celShadowTint[0] - 0.12f) > 1e-5f || std::fabs(m.celShadowTint[1] - 0.34f) > 1e-5f || std::fabs(m.celShadowTint[2] - 0.56f) > 1e-5f) {
+    return false;
+  }
   const Kizuri::MaterialData& pm = b->partMaterials[0].material;
   if (b->partMaterials[0].part != 3 || !pm.celShaded || std::fabs(pm.celBands - 7.0f) > 1e-5f) {
     return false;
@@ -8368,6 +8398,9 @@ bool TestCelShading() {
   if (std::fabs(pm.celOutlineColor[0] - 0.44f) > 1e-5f || std::fabs(pm.celOutlineColor[1] - 0.55f) > 1e-5f || std::fabs(pm.celOutlineColor[2] - 0.66f) > 1e-5f) {
     return false;
   }
+  if (std::fabs(pm.celShadow - 0.75f) > 1e-5f || std::fabs(pm.celShadowTint[0] - 0.21f) > 1e-5f || std::fabs(pm.celShadowTint[1] - 0.43f) > 1e-5f || std::fabs(pm.celShadowTint[2] - 0.65f) > 1e-5f) {
+    return false;
+  }
   std::string ps;
   if (!LoadShaderText("LightingPS.hlsl", ps)) {
     return false;
@@ -8375,19 +8408,21 @@ bool TestCelShading() {
   if (ps.find('\r') != std::string::npos) {
     return false;
   }
-  const char* required[10] = {
+  const char* required[12] = {
     "Texture2D CelTX : register(t28);",
     "float3 ShadeCel(",
     "float CelEdge(",
     "float4 celRaw = CelTX.Load(int3((int) matID, 0, 0));",
     "float4 celLine = CelTX.Load(int3((int) matID, 1, 0));",
+    "float4 celShadowRow = CelTX.Load(int3((int) matID, 3, 0));",
     "if (celOn > 0.5 && celLine.x > 0.001) {",
     "celAmbient = 0.3 + 0.9 * ambBand;",
     "ShadeOne(N, V, Lsun, LightColor.rgb, albedo, roughness, metallic, specF0, lb, celInfo)",
+    "directD = lerp(directD * dirShadow, albedo * celShadowRow.rgb, shadowMix);",
     "hdr = lerp(hdr, lineCol, saturate(edge * celLine.x));",
     "col += specAmb * (F0e * brdf.x + brdf.y) * ao * (1.0 - ccEnvF) * (1.0 - celOn);"
   };
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 12; ++i) {
     if (ps.find(required[i]) == std::string::npos) {
       return false;
     }
@@ -8402,13 +8437,15 @@ bool TestCelShading() {
   if (fwd.find('\r') != std::string::npos) {
     return false;
   }
-  const char* fwdRequired[4] = {
+  const char* fwdRequired[6] = {
     "Texture2D CelTX : register(t28);",
     "float3 ShadeCelFwd(",
     "float4 celRawF = CelTX.Load(int3((int) celRow, 0, 0));",
+    "float4 celShadowRowF = CelTX.Load(int3((int) celRow, 3, 0));",
+    "directF = lerp(directF * dirShadow, alb * celShadowRowF.rgb, shadowMixF);",
     "col += cubeEnv * fres * (1.0 - rough) * (1.0 - celOnF);"
   };
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 6; ++i) {
     if (fwd.find(fwdRequired[i]) == std::string::npos) {
       return false;
     }

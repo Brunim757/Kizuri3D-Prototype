@@ -165,6 +165,10 @@ void FillMatConstants(const DeferredMaterial& use, float lodFade, MatConstants& 
       float lineR = use.celOutlineColor[0] < 0.0f ? 0.0f : (use.celOutlineColor[0] > 1.0f ? 1.0f : use.celOutlineColor[0]);
       float lineG = use.celOutlineColor[1] < 0.0f ? 0.0f : (use.celOutlineColor[1] > 1.0f ? 1.0f : use.celOutlineColor[1]);
       float lineB = use.celOutlineColor[2] < 0.0f ? 0.0f : (use.celOutlineColor[2] > 1.0f ? 1.0f : use.celOutlineColor[2]);
+      float shadow = use.celShadow < 0.0f ? 0.0f : (use.celShadow > 1.0f ? 1.0f : use.celShadow);
+      float shadowR = use.celShadowTint[0] < 0.0f ? 0.0f : (use.celShadowTint[0] > 1.0f ? 1.0f : use.celShadowTint[0]);
+      float shadowG = use.celShadowTint[1] < 0.0f ? 0.0f : (use.celShadowTint[1] > 1.0f ? 1.0f : use.celShadowTint[1]);
+      float shadowB = use.celShadowTint[2] < 0.0f ? 0.0f : (use.celShadowTint[2] > 1.0f ? 1.0f : use.celShadowTint[2]);
       unsigned char* cx = celTablePx + static_cast<size_t>(row) * 4;
       cx[0] = use.celShaded ? 255 : 0;
       cx[1] = static_cast<unsigned char>(bands * 255.0f + 0.5f);
@@ -180,6 +184,11 @@ void FillMatConstants(const DeferredMaterial& use, float lodFade, MatConstants& 
       cc[1] = static_cast<unsigned char>(lineG * 255.0f + 0.5f);
       cc[2] = static_cast<unsigned char>(lineB * 255.0f + 0.5f);
       cc[3] = 255;
+      unsigned char* shx = celTablePx + static_cast<size_t>(768 + row) * 4;
+      shx[0] = static_cast<unsigned char>(shadowR * 255.0f + 0.5f);
+      shx[1] = static_cast<unsigned char>(shadowG * 255.0f + 0.5f);
+      shx[2] = static_cast<unsigned char>(shadowB * 255.0f + 0.5f);
+      shx[3] = static_cast<unsigned char>(shadow * 255.0f + 0.5f);
     }
   }
   outRow = row;
@@ -1204,12 +1213,12 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   if (!rhi->UpdateTextureMip(linkTable, 0, 256, 1, 256 * 4, linkPx, sizeof(linkPx))) {
     return false;
   }
-  celTable = rhi->CreateTexture2D(256, 3, 1, RHITextureFormat::RGBA8_UNORM);
+  celTable = rhi->CreateTexture2D(256, 4, 1, RHITextureFormat::RGBA8_UNORM);
   if (celTable == 0) {
     return false;
   }
   std::memset(celPx, 0, sizeof(celPx));
-  if (!rhi->UpdateTextureMip(celTable, 0, 256, 3, 256 * 4, celPx, sizeof(celPx))) {
+  if (!rhi->UpdateTextureMip(celTable, 0, 256, 4, 256 * 4, celPx, sizeof(celPx))) {
     return false;
   }
   std::memset(matTablePx, 0, sizeof(matTablePx));
@@ -5899,7 +5908,7 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
     FillMatConstants(d.mat, 0.0f, mc, mec, matTablePx, linkPx, celPx, matTableRows, matRow);
     (void)matRow;
     if (celTable != 0) {
-      rhi->UpdateTextureMip(celTable, 0, 256, 3, 256 * 4, celPx, sizeof(celPx));
+      rhi->UpdateTextureMip(celTable, 0, 256, 4, 256 * 4, celPx, sizeof(celPx));
       rhi->SetPixelTexture2D(28, celTable);
     }
     rhi->UpdateConstantBuffer(matCB, &mc, sizeof(mc));
@@ -6556,7 +6565,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
     rhi->SetPixelTexture2D(24, linkTable);
   }
   if (celTable != 0) {
-    rhi->UpdateTextureMip(celTable, 0, 256, 3, 256 * 4, celPx, sizeof(celPx));
+    rhi->UpdateTextureMip(celTable, 0, 256, 4, 256 * 4, celPx, sizeof(celPx));
     rhi->SetPixelTexture2D(28, celTable);
   }
   if (spotCookieOn && cookieArrayTex != 0) {

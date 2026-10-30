@@ -782,6 +782,7 @@ float4 main(PSIn pin) : SV_Target
     float4 celRaw = CelTX.Load(int3((int) matID, 0, 0));
     float4 celInfo = float4(celRaw.r, 1.0 + celRaw.g * 7.0, celRaw.b, celRaw.a);
     float celOn = celInfo.x > 0.5 ? 1.0 : 0.0;
+    float4 celShadowRow = CelTX.Load(int3((int) matID, 3, 0));
     float4 matInfo = MatTable.Load(int3((int) matID, 0, 0));
     float4 sssInfo = MatTable.Load(int3((int) matID, 1, 0));
     float3 sssTint = sssInfo.rgb;
@@ -863,7 +864,14 @@ float4 main(PSIn pin) : SV_Target
                     }
                 }
             }
-            col += ShadeOne(N, V, Ld, LightC[i].rgb, albedo, roughness, metallic, specF0, lb, celInfo) * dirShadow;
+            float3 directD = ShadeOne(N, V, Ld, LightC[i].rgb, albedo, roughness, metallic, specF0, lb, celInfo);
+            if (celOn > 0.5 && celShadowRow.a > 0.001) {
+                float shadowMix = (1.0 - dirShadow) * celShadowRow.a;
+                directD = lerp(directD * dirShadow, albedo * celShadowRow.rgb, shadowMix);
+            } else {
+                directD *= dirShadow;
+            }
+            col += directD;
             col += ShadeSss(N, Ld, LightC[i].rgb, albedo, sssTint, sssAmt, sssWrap) * dirShadow * (1.0 - celOn);
             col += ShadeHair(N, lb.anisoT, V, Ld, LightC[i].rgb, sssTint, isHair * sssAmt, 0.15) * dirShadow * (1.0 - celOn);
         } else {

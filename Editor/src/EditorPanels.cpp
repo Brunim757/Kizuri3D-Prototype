@@ -256,6 +256,8 @@ static uint64_t StaticMatSig(const DeferredMaterial& m) {
   h = StaticMixHash(h, &m.celOutline, sizeof(m.celOutline));
   h = StaticMixHash(h, &m.celOutlineWidth, sizeof(m.celOutlineWidth));
   h = StaticMixHash(h, m.celOutlineColor, sizeof(float) * 3);
+  h = StaticMixHash(h, &m.celShadow, sizeof(m.celShadow));
+  h = StaticMixHash(h, m.celShadowTint, sizeof(float) * 3);
   const RHITexture slots[20] = { m.albedoTex, m.normalTex, m.ormTex, m.heightTex, m.lightmapTex, m.emissiveTex, m.specularTex, m.specularColorTex, m.clearcoatTex, m.clearcoatRoughnessTex, m.clearcoatNormalTex, m.sheenColorTex, m.sheenRoughnessTex, m.anisotropyTex, m.iridescenceTex, m.iridescenceThicknessTex, m.transmissionTex, m.thicknessTex, m.detailAlbedoTex, m.detailNormalTex };
   h = StaticMixHash(h, slots, sizeof(slots));
   return h == 0 ? 1 : h;
@@ -3849,6 +3851,12 @@ bool EditorApp::DrawMaterialScalars(MaterialData& mat) {
           matChanged = true;
         }
         if (ImGui::ColorEdit3("Cel Outline Color", mat.celOutlineColor)) {
+          matChanged = true;
+        }
+        if (ImGui::DragFloat("Cel Shadow", &mat.celShadow, 0.01f, 0.0f, 1.0f)) {
+          matChanged = true;
+        }
+        if (ImGui::ColorEdit3("Cel Shadow Tint", mat.celShadowTint)) {
           matChanged = true;
         }
       }

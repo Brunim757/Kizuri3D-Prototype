@@ -112,6 +112,8 @@ struct MaterialData {  float albedo[3];
   float celOutline = 0.7f;
   float celOutlineWidth = 1.5f;
   float celOutlineColor[3] = { 0.02f, 0.02f, 0.03f };
+  float celShadow = 0.0f;
+  float celShadowTint[3] = { 0.55f, 0.6f, 0.85f };
   UvXformData xforms[5];
   float ior = 1.5f;
   bool hasSpecular = false;

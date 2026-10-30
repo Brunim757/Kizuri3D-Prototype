@@ -65,6 +65,10 @@ void MakeDefaultMaterial(MaterialData& m) {
   m.celOutlineColor[0] = 0.02f;
   m.celOutlineColor[1] = 0.02f;
   m.celOutlineColor[2] = 0.03f;
+  m.celShadow = 0.0f;
+  m.celShadowTint[0] = 0.55f;
+  m.celShadowTint[1] = 0.6f;
+  m.celShadowTint[2] = 0.85f;
   for (int s = 0; s < 5; ++s) {
     m.xforms[s].offsetU = 0.0f;
     m.xforms[s].offsetV = 0.0f;
@@ -147,12 +151,14 @@ struct CelStylePreset {
   float outline;
   float outlineWidth;
   float outlineColor[3];
+  float shadow;
+  float shadowTint[3];
 };
 const CelStylePreset kCelStylePresets[] = {
-  { "Anime", 2.0f, 0.45f, 0.35f, 0.85f, 1.6f, { 0.03f, 0.02f, 0.04f } },
-  { "Comic", 2.0f, 0.15f, 0.10f, 1.00f, 2.6f, { 0.01f, 0.01f, 0.01f } },
-  { "Painterly", 5.0f, 0.60f, 0.50f, 0.25f, 1.0f, { 0.08f, 0.05f, 0.06f } },
-  { "Technical", 4.0f, 0.20f, 0.15f, 0.60f, 1.0f, { 0.05f, 0.12f, 0.18f } }
+  { "Anime", 2.0f, 0.45f, 0.35f, 0.85f, 1.6f, { 0.03f, 0.02f, 0.04f }, 0.50f, { 0.55f, 0.60f, 0.85f } },
+  { "Comic", 2.0f, 0.15f, 0.10f, 1.00f, 2.6f, { 0.01f, 0.01f, 0.01f }, 0.65f, { 0.20f, 0.18f, 0.25f } },
+  { "Painterly", 5.0f, 0.60f, 0.50f, 0.25f, 1.0f, { 0.08f, 0.05f, 0.06f }, 0.40f, { 0.60f, 0.45f, 0.50f } },
+  { "Technical", 4.0f, 0.20f, 0.15f, 0.60f, 1.0f, { 0.05f, 0.12f, 0.18f }, 0.30f, { 0.35f, 0.50f, 0.60f } }
 };
 }
 int CelStyleCount() {
@@ -180,6 +186,10 @@ void ApplyCelStyle(MaterialData& m, CelStyle style) {
   m.celOutlineColor[0] = preset.outlineColor[0];
   m.celOutlineColor[1] = preset.outlineColor[1];
   m.celOutlineColor[2] = preset.outlineColor[2];
+  m.celShadow = preset.shadow;
+  m.celShadowTint[0] = preset.shadowTint[0];
+  m.celShadowTint[1] = preset.shadowTint[1];
+  m.celShadowTint[2] = preset.shadowTint[2];
 }
 void MakeDefaultDecal(DecalData& d) {
   d.size[0] = 1.0f;

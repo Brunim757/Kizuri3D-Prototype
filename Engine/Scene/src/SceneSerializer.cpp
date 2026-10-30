@@ -136,6 +136,7 @@ static void WriteMaterial(std::FILE* fp, const Entity* e) {
         std::fprintf(fp, "MATVT %d\n", m.vtAlbedo ? 1 : 0);
         std::fprintf(fp, "MATTRI %d %.9g\n", m.triplanar ? 1 : 0, m.triplanarScale);
         std::fprintf(fp, "MATCEL %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n", m.celShaded ? 1 : 0, m.celBands, m.celSpecular, m.celRim, m.celOutline, m.celOutlineWidth, m.celOutlineColor[0], m.celOutlineColor[1], m.celOutlineColor[2]);
+        std::fprintf(fp, "MATCELS %.9g %.9g %.9g %.9g\n", m.celShadow, m.celShadowTint[0], m.celShadowTint[1], m.celShadowTint[2]);
         if (m.useNodes && !m.graph.nodes.empty()) {
           for (size_t ni = 0; ni < m.graph.nodes.size(); ++ni) {
             const MaterialNode& nd = m.graph.nodes[ni];
@@ -156,6 +157,7 @@ static void WriteMaterial(std::FILE* fp, const Entity* e) {
     std::fprintf(fp, "PARTMATSSSK %u %d\n", pm.part, pm.material.sssKind);
     std::fprintf(fp, "PARTMATVT %u %d\n", pm.part, pm.material.vtAlbedo ? 1 : 0);
     std::fprintf(fp, "PARTMATCEL %u %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n", pm.part, pm.material.celShaded ? 1 : 0, pm.material.celBands, pm.material.celSpecular, pm.material.celRim, pm.material.celOutline, pm.material.celOutlineWidth, pm.material.celOutlineColor[0], pm.material.celOutlineColor[1], pm.material.celOutlineColor[2]);
+    std::fprintf(fp, "PARTMATCELS %u %.9g %.9g %.9g %.9g\n", pm.part, pm.material.celShadow, pm.material.celShadowTint[0], pm.material.celShadowTint[1], pm.material.celShadowTint[2]);
   }
 }
 
@@ -666,6 +668,19 @@ static bool ReadMaterial(const std::string& field, const std::string& rest, void
           return true;
   }
 
+  if (field == "MATCELS") {
+          size_t pos = 0;
+          float dv[4] = { 0.0f, 0.55f, 0.6f, 0.85f };
+          if (!ParseFloats(rest, pos, dv, 4)) {
+            return false;
+          }
+          e->material.celShadow = dv[0] < 0.0f ? 0.0f : (dv[0] > 1.0f ? 1.0f : dv[0]);
+          e->material.celShadowTint[0] = dv[1] < 0.0f ? 0.0f : (dv[1] > 1.0f ? 1.0f : dv[1]);
+          e->material.celShadowTint[1] = dv[2] < 0.0f ? 0.0f : (dv[2] > 1.0f ? 1.0f : dv[2]);
+          e->material.celShadowTint[2] = dv[3] < 0.0f ? 0.0f : (dv[3] > 1.0f ? 1.0f : dv[3]);
+          return true;
+  }
+
   if (field == "MATNODE") {
           size_t pos = 0;
           long iv[5] = { -1, 0, -1, -1, -1 };
@@ -1018,6 +1033,37 @@ static bool ReadMaterial(const std::string& field, const std::string& rest, void
           pm->material.celOutlineColor[0] = dv[5] < 0.0f ? 0.0f : (dv[5] > 1.0f ? 1.0f : dv[5]);
           pm->material.celOutlineColor[1] = dv[6] < 0.0f ? 0.0f : (dv[6] > 1.0f ? 1.0f : dv[6]);
           pm->material.celOutlineColor[2] = dv[7] < 0.0f ? 0.0f : (dv[7] > 1.0f ? 1.0f : dv[7]);
+          return true;
+  }
+
+  if (field == "PARTMATCELS") {
+          size_t pos = 0;
+          long pv = -1;
+          if (!ParseInt(rest, pos, pv) || pv < 0) {
+            return false;
+          }
+          PartMaterial* pm = nullptr;
+          for (size_t pi = 0; pi < e->partMaterials.size(); ++pi) {
+            if (e->partMaterials[pi].part == static_cast<uint32_t>(pv)) {
+              pm = &e->partMaterials[pi];
+              break;
+            }
+          }
+          if (pm == nullptr) {
+            PartMaterial fresh;
+            fresh.part = static_cast<uint32_t>(pv);
+            MakeDefaultMaterial(fresh.material);
+            e->partMaterials.push_back(fresh);
+            pm = &e->partMaterials.back();
+          }
+          float dv[4] = { 0.0f, 0.55f, 0.6f, 0.85f };
+          if (!ParseFloats(rest, pos, dv, 4)) {
+            return false;
+          }
+          pm->material.celShadow = dv[0] < 0.0f ? 0.0f : (dv[0] > 1.0f ? 1.0f : dv[0]);
+          pm->material.celShadowTint[0] = dv[1] < 0.0f ? 0.0f : (dv[1] > 1.0f ? 1.0f : dv[1]);
+          pm->material.celShadowTint[1] = dv[2] < 0.0f ? 0.0f : (dv[2] > 1.0f ? 1.0f : dv[2]);
+          pm->material.celShadowTint[2] = dv[3] < 0.0f ? 0.0f : (dv[3] > 1.0f ? 1.0f : dv[3]);
           return true;
   }
   return false;
