@@ -205,7 +205,7 @@ A renderização é tratada como sistema de produção, não como coleção de e
 - **Contrato do TAA:** pixels estáticos reprojetam pela posição reconstruída do depth buffer usando as matrizes sem jitter (`PrevVPU`/`CurrVPU`); objetos com transform ou ossos alterados entram num velocity buffer separado, desenhado contra o `gDepth` com `LessEqual` e consumido no slot 3 do resolve. O velocity pass reproduz alpha cutout, VT, dither de LOD e double-sided para não gravar movimento em pixels que o G-buffer descartou. Superfícies tessellated usam hull/domain próprios do velocity, com os mesmos fatores de tesselação e o mesmo deslocamento por height map do G-buffer, e calculam a posição anterior no espaço de mundo anterior para que a mudança de profundidade causada pelo deslocamento não gere ghosting. Alterações de tesselação invalidam o histórico temporal, porque silhueta e deslocamento mudam sem transformação de objeto. O histórico é rejeitado por profundidade e por ausência de pose anterior, e o primeiro frame de um objeto resolve no frame atual. O passe só roda com TAA ativo e o alvo é limpo uma vez por frame; objeto parado não entra no buffer.
 - **Materiais:** PBR completo e correto (energia, Fresnel, normal maps, ORM, alpha modes, double-sided), clearcoat, sheen, transmission, volume, anisotropia, iridescência, dispersão, layered materials, decals, detail maps, POM, tessellation e virtual textures
 - **Geometria:** meshlets, GPU culling, oclusão, LOD, instancing, static batching e streaming; malhas skinned ficam fora de meshlets, LOD bake, instancing, GPU culling e static batching
-- **Cel shading:** modo de material com rampa quantizada de luz direta e ambiente, especular estilizado, rim e contorno por normal/depth; os parâmetros vivem no material, convivem com PBR na mesma cena e não substituem o caminho padrão
+- **Cel shading:** modo de material com rampa quantizada de luz direta e ambiente, especular estilizado, rim e contorno por normal/depth; os parâmetros vivem no material, convivem com PBR na mesma cena e não substituem o caminho padrão; presets de estilo preenchem esses parâmetros e ligam o modo
 - **Debug e profiler:** debug views, visualização de G-buffer, sombras, luzes, probes, overdraw, HZB, tempos de GPU por passe, shader hot reload e captura de frame
 - **Qualidade obrigatória:** sem flicker de luz, sem rachaduras de sombra, sem costura de cascata, sem ghosting de TAA, sem popping de LOD e sem diferença de cor entre Editor e jogo
 
@@ -332,7 +332,7 @@ A renderização é tratada como sistema de produção, não como coleção de e
 - Os parâmetros são serializados no material e por parte, editáveis no Inspector e no painel de material, com valores padrão seguros para cenas que não usam o modo
 - O modo convive com PBR na mesma cena, usa a mesma tabela de materiais do deferred e é resolvido no passe de iluminação, sem passe extra e sem alterar o G-buffer
 - Compatibilidade com sombras, TAA e pós-processamento: o contorno e o banding entram no resultado final antes do fog e do pós, e o histórico temporal continua sendo rejeitado pelos mesmos critérios de profundidade e movimento
-- Presets de estilo (anime, cartoon, pintado) e preview dedicado ficam para a camada de autoria sobre esse contrato
+- Presets de estilo (anime, comic, pintado e técnico) preenchem os parâmetros do material e ligam o modo, sem criar estado paralelo; preview dedicado fica para a camada de autoria sobre esse contrato
 
 ---
 

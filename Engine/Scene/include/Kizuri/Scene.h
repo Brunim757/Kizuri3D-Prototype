@@ -85,6 +85,11 @@ struct MaterialGraph {
 };
 bool EvaluateMaterialGraph(const MaterialGraph& graph, float outAlbedo[3], float& outRoughness, float& outMetallic, float outEmissive[3], std::string& outAlbedoTex);
 void EmitMaterialGraphHlsl(const MaterialGraph& graph, std::string& outHlsl);
+struct MaterialData;
+enum class CelStyle { Anime, Comic, Painterly, Technical, Count };
+int CelStyleCount();
+const char* CelStyleName(CelStyle style);
+void ApplyCelStyle(MaterialData& m, CelStyle style);
 struct MaterialData {  float albedo[3];
   float alpha = 1.0f;
   float metallic;

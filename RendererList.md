@@ -468,7 +468,7 @@ Planejado
 - [ ] Sombra pintada e controle de bandas
 - [x] Especular estilizado
 - [x] Contorno por normal/depth com espessura e cor
-- [ ] Presets de estilo (anime, cartoon, pintado)
+- [x] Presets de estilo (anime, cartoon, pintado)
 - [x] Convivência com PBR na mesma cena
 - [ ] Estabilidade com TAA, sombras e pós-processamento
 - [ ] Editor de material cel shading com preview

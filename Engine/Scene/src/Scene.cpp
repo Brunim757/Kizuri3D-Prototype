@@ -138,6 +138,49 @@ void MakeDefaultMaterial(MaterialData& m) {
   m.graph.nextId = 0;
   m.useNodes = false;
 }
+namespace {
+struct CelStylePreset {
+  const char* name;
+  float bands;
+  float specular;
+  float rim;
+  float outline;
+  float outlineWidth;
+  float outlineColor[3];
+};
+const CelStylePreset kCelStylePresets[] = {
+  { "Anime", 2.0f, 0.45f, 0.35f, 0.85f, 1.6f, { 0.03f, 0.02f, 0.04f } },
+  { "Comic", 2.0f, 0.15f, 0.10f, 1.00f, 2.6f, { 0.01f, 0.01f, 0.01f } },
+  { "Painterly", 5.0f, 0.60f, 0.50f, 0.25f, 1.0f, { 0.08f, 0.05f, 0.06f } },
+  { "Technical", 4.0f, 0.20f, 0.15f, 0.60f, 1.0f, { 0.05f, 0.12f, 0.18f } }
+};
+}
+int CelStyleCount() {
+  return static_cast<int>(sizeof(kCelStylePresets) / sizeof(kCelStylePresets[0]));
+}
+const char* CelStyleName(CelStyle style) {
+  const int idx = static_cast<int>(style);
+  if (idx < 0 || idx >= CelStyleCount()) {
+    return "";
+  }
+  return kCelStylePresets[idx].name;
+}
+void ApplyCelStyle(MaterialData& m, CelStyle style) {
+  const int idx = static_cast<int>(style);
+  if (idx < 0 || idx >= CelStyleCount()) {
+    return;
+  }
+  const CelStylePreset& preset = kCelStylePresets[idx];
+  m.celShaded = true;
+  m.celBands = preset.bands;
+  m.celSpecular = preset.specular;
+  m.celRim = preset.rim;
+  m.celOutline = preset.outline;
+  m.celOutlineWidth = preset.outlineWidth;
+  m.celOutlineColor[0] = preset.outlineColor[0];
+  m.celOutlineColor[1] = preset.outlineColor[1];
+  m.celOutlineColor[2] = preset.outlineColor[2];
+}
 void MakeDefaultDecal(DecalData& d) {
   d.size[0] = 1.0f;
   d.size[1] = 1.0f;

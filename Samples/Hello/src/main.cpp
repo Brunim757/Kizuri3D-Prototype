@@ -8248,6 +8248,54 @@ bool TestCelShading() {
   if (defaults.celOutlineColor[0] != 0.02f || defaults.celOutlineColor[1] != 0.02f || defaults.celOutlineColor[2] != 0.03f) {
     return false;
   }
+  const int styleCount = Kizuri::CelStyleCount();
+  if (styleCount != 4) {
+    return false;
+  }
+  for (int i = 0; i < styleCount; ++i) {
+    const Kizuri::CelStyle style = static_cast<Kizuri::CelStyle>(i);
+    const char* name = Kizuri::CelStyleName(style);
+    if (name == nullptr || name[0] == '\0') {
+      return false;
+    }
+    Kizuri::MaterialData styled;
+    Kizuri::MakeDefaultMaterial(styled);
+    Kizuri::ApplyCelStyle(styled, style);
+    if (!styled.celShaded || styled.celBands < 1.0f || styled.celBands > 8.0f) {
+      return false;
+    }
+    if (styled.celSpecular < 0.0f || styled.celSpecular > 1.0f || styled.celRim < 0.0f || styled.celRim > 1.0f) {
+      return false;
+    }
+    if (styled.celOutline < 0.0f || styled.celOutline > 1.0f || styled.celOutlineWidth < 0.5f || styled.celOutlineWidth > 4.0f) {
+      return false;
+    }
+    for (int c = 0; c < 3; ++c) {
+      if (styled.celOutlineColor[c] < 0.0f || styled.celOutlineColor[c] > 1.0f) {
+        return false;
+      }
+    }
+    if (i > 0) {
+      Kizuri::MaterialData previous;
+      Kizuri::MakeDefaultMaterial(previous);
+      Kizuri::ApplyCelStyle(previous, static_cast<Kizuri::CelStyle>(i - 1));
+      if (Kizuri::MaterialEqual(previous, styled)) {
+        return false;
+      }
+    }
+  }
+  Kizuri::MaterialData untouched;
+  Kizuri::MakeDefaultMaterial(untouched);
+  Kizuri::ApplyCelStyle(untouched, Kizuri::CelStyle::Count);
+  if (untouched.celShaded) {
+    return false;
+  }
+  if (Kizuri::CelStyleName(Kizuri::CelStyle::Count)[0] != '\0') {
+    return false;
+  }
+  if (Kizuri::CelStyleName(static_cast<Kizuri::CelStyle>(-1))[0] != '\0') {
+    return false;
+  }
   Kizuri::Scene scene;
   Kizuri::EntityId id = scene.CreateEntity("cel");
   Kizuri::Entity* e = scene.Get(id);

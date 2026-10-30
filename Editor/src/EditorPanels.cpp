@@ -3821,6 +3821,17 @@ bool EditorApp::DrawMaterialScalars(MaterialData& mat) {
       if (ImGui::Checkbox("Cel Shaded", &mat.celShaded)) {
         matChanged = true;
       }
+      if (ImGui::BeginCombo("Cel Style", "Apply Preset")) {
+        const int styleCount = CelStyleCount();
+        for (int i = 0; i < styleCount; ++i) {
+          const CelStyle style = static_cast<CelStyle>(i);
+          if (ImGui::Selectable(CelStyleName(style))) {
+            ApplyCelStyle(mat, style);
+            matChanged = true;
+          }
+        }
+        ImGui::EndCombo();
+      }
       if (mat.celShaded) {
         if (ImGui::DragFloat("Cel Bands", &mat.celBands, 0.05f, 1.0f, 8.0f)) {
           matChanged = true;
