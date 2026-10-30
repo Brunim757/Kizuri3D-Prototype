@@ -8159,6 +8159,15 @@ bool TestAutoExposure() {  Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API
   Kizuri::DestroyRHI(rhi);
   return ok;
 }
+void NormalizeShaderText(std::string& text) {
+  size_t w = 0;
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] != '\r') {
+      text[w++] = text[i];
+    }
+  }
+  text.resize(w);
+}
 bool LoadShaderText(const char* name, std::string& out) {
   const char* dirs[3] = { "Shaders", "Samples/../Shaders", "build/bin/Release/Shaders" };
   for (int d = 0; d < 3; ++d) {
@@ -8178,10 +8187,19 @@ bool LoadShaderText(const char* name, std::string& out) {
     size_t got = std::fread(&out[0], 1, out.size(), fp);
     std::fclose(fp);
     if (got == out.size()) {
+      NormalizeShaderText(out);
       return true;
     }
   }
   return false;
+}
+bool TestShaderLineEndings() {
+  std::string text = "void main()\r\n{\r\n    return;\r\n}\r\n";
+  NormalizeShaderText(text);
+  if (text.find('\r') != std::string::npos) {
+    return false;
+  }
+  return text == "void main()\n{\n    return;\n}\n";
 }
 static void TaaTestProject(const float vp[16], const float p[3], float& u, float& v) {
   const float x = p[0] * vp[0] + p[1] * vp[4] + p[2] * vp[8] + vp[12];
@@ -8412,6 +8430,9 @@ bool TestShadowShaders() {
   std::string ps;
   std::string velocityPS;
   if (!LoadShaderText("ShadowVS.hlsl", vs) || !LoadShaderText("ShadowPS.hlsl", ps) || !LoadShaderText("VelocityPS.hlsl", velocityPS)) {
+    return false;
+  }
+  if (vs.find('\r') != std::string::npos || ps.find('\r') != std::string::npos || velocityPS.find('\r') != std::string::npos) {
     return false;
   }
   const char* vsRequired[6] = {
@@ -14309,6 +14330,7 @@ int main() {
   failures += Check("TaaVelocity", TestTaaVelocity());
   failures += Check("VelocityShaders", TestVelocityShaders());
   failures += Check("TessellationVelocityShaders", TestTessellationVelocityShaders());
+  failures += Check("ShaderLineEndings", TestShaderLineEndings());
   failures += Check("ShadowShaders", TestShadowShaders());
   failures += Check("AutoExposure", TestAutoExposure());
   failures += Check("CubeLut", TestCubeLut());
