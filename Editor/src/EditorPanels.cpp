@@ -249,6 +249,13 @@ static uint64_t StaticMatSig(const DeferredMaterial& m) {
   h = StaticMixHash(h, &m.alphaCutoff, sizeof(m.alphaCutoff));
   h = StaticMixHash(h, &m.unlit, sizeof(m.unlit));
   h = StaticMixHash(h, &m.doubleSided, sizeof(m.doubleSided));
+  h = StaticMixHash(h, &m.celShaded, sizeof(m.celShaded));
+  h = StaticMixHash(h, &m.celBands, sizeof(m.celBands));
+  h = StaticMixHash(h, &m.celSpecular, sizeof(m.celSpecular));
+  h = StaticMixHash(h, &m.celRim, sizeof(m.celRim));
+  h = StaticMixHash(h, &m.celOutline, sizeof(m.celOutline));
+  h = StaticMixHash(h, &m.celOutlineWidth, sizeof(m.celOutlineWidth));
+  h = StaticMixHash(h, m.celOutlineColor, sizeof(float) * 3);
   const RHITexture slots[20] = { m.albedoTex, m.normalTex, m.ormTex, m.heightTex, m.lightmapTex, m.emissiveTex, m.specularTex, m.specularColorTex, m.clearcoatTex, m.clearcoatRoughnessTex, m.clearcoatNormalTex, m.sheenColorTex, m.sheenRoughnessTex, m.anisotropyTex, m.iridescenceTex, m.iridescenceThicknessTex, m.transmissionTex, m.thicknessTex, m.detailAlbedoTex, m.detailNormalTex };
   h = StaticMixHash(h, slots, sizeof(slots));
   return h == 0 ? 1 : h;
@@ -3809,6 +3816,31 @@ bool EditorApp::DrawMaterialScalars(MaterialData& mat) {
     }
     if (ImGui::DragFloat("Alpha Cutoff", &mat.alphaCutoff, 0.01f, 0.0f, 1.0f)) {
       matChanged = true;
+    }
+    if (ImGui::CollapsingHeader("Cel Shading")) {
+      if (ImGui::Checkbox("Cel Shaded", &mat.celShaded)) {
+        matChanged = true;
+      }
+      if (mat.celShaded) {
+        if (ImGui::DragFloat("Cel Bands", &mat.celBands, 0.05f, 1.0f, 8.0f)) {
+          matChanged = true;
+        }
+        if (ImGui::DragFloat("Cel Specular", &mat.celSpecular, 0.01f, 0.0f, 1.0f)) {
+          matChanged = true;
+        }
+        if (ImGui::DragFloat("Cel Rim", &mat.celRim, 0.01f, 0.0f, 1.0f)) {
+          matChanged = true;
+        }
+        if (ImGui::DragFloat("Cel Outline", &mat.celOutline, 0.01f, 0.0f, 1.0f)) {
+          matChanged = true;
+        }
+        if (ImGui::DragFloat("Cel Outline Width", &mat.celOutlineWidth, 0.05f, 0.5f, 4.0f)) {
+          matChanged = true;
+        }
+        if (ImGui::ColorEdit3("Cel Outline Color", mat.celOutlineColor)) {
+          matChanged = true;
+        }
+      }
     }
     if (ImGui::CollapsingHeader("Emissive")) {
       if (ImGui::ColorEdit3("Emissive Color", mat.emissive)) {

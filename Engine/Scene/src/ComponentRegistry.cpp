@@ -113,6 +113,7 @@ const InspectorCondition kLightRect[] = { { offsetof(LightData, type), Inspector
 const InspectorCondition kLightShadow[] = { { offsetof(LightData, castShadow), InspectorConditionOp::Equals, 1, sizeof(bool) } };
 const InspectorCondition kLightShadowDirectional[] = { { offsetof(LightData, castShadow), InspectorConditionOp::Equals, 1, sizeof(bool) }, { offsetof(LightData, type), InspectorConditionOp::Equals, 2 } };
 const InspectorCondition kDecalMaterial[] = { { offsetof(DecalData, matMask), InspectorConditionOp::GreaterEqual, 2 } };
+const InspectorCondition kCelShaded[] = { { offsetof(MaterialData, celShaded), InspectorConditionOp::Equals, 1, sizeof(bool) } };
 const InspectorCondition kRigidbodyDynamic[] = { { offsetof(RigidbodyData, motionType), InspectorConditionOp::Equals, 2 } };
 const InspectorCondition kRigidbodyBox[] = { { offsetof(RigidbodyData, colliderType), InspectorConditionOp::Equals, 0 } };
 const InspectorCondition kRigidbodyRound[] = {
@@ -159,6 +160,13 @@ const InspectorFieldDesc kMaterialFields[] = {
   { "Double Sided", offsetof(MaterialData, doubleSided), InspectorFieldKind::Bool },
   { "Alpha Mode", offsetof(MaterialData, alphaMode), InspectorFieldKind::Enum, 1.0f, 0.0f, 0.0f, false, kAlphaModeLabels, kAlphaModeValues, 3 },
   { "Alpha Cutoff", offsetof(MaterialData, alphaCutoff), InspectorFieldKind::Float, 0.01f, 0.0f, 1.0f },
+  { "Cel Shaded", offsetof(MaterialData, celShaded), InspectorFieldKind::Bool },
+  { "Cel Bands", offsetof(MaterialData, celBands), InspectorFieldKind::Float, 0.05f, 1.0f, 8.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
+  { "Cel Specular", offsetof(MaterialData, celSpecular), InspectorFieldKind::Float, 0.01f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
+  { "Cel Rim", offsetof(MaterialData, celRim), InspectorFieldKind::Float, 0.01f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
+  { "Cel Outline", offsetof(MaterialData, celOutline), InspectorFieldKind::Float, 0.01f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
+  { "Cel Outline Width", offsetof(MaterialData, celOutlineWidth), InspectorFieldKind::Float, 0.05f, 0.5f, 4.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
+  { "Cel Outline Color", offsetof(MaterialData, celOutlineColor), InspectorFieldKind::Color3, 1.0f, 0.0f, 1.0f, false, nullptr, nullptr, 0, kCelShaded, 1 },
   { "IOR", offsetof(MaterialData, ior), InspectorFieldKind::Float, 0.01f, 1.0f, 3.0f },
   { "Specular", offsetof(MaterialData, hasSpecular), InspectorFieldKind::Bool },
   { "Specular Color", offsetof(MaterialData, specularColor), InspectorFieldKind::Color3 },
@@ -477,6 +485,12 @@ bool MaterialEqual(const MaterialData& a, const MaterialData& b) {
     return false;
   }
   if (!Float3Equal(a.emissive, b.emissive) || a.emissiveStrength != b.emissiveStrength || a.emissiveTex != b.emissiveTex || a.unlit != b.unlit || a.doubleSided != b.doubleSided || a.alphaMode != b.alphaMode || a.alphaCutoff != b.alphaCutoff) {
+    return false;
+  }
+  if (a.celShaded != b.celShaded || a.celBands != b.celBands || a.celSpecular != b.celSpecular || a.celRim != b.celRim) {
+    return false;
+  }
+  if (a.celOutline != b.celOutline || a.celOutlineWidth != b.celOutlineWidth || !Float3Equal(a.celOutlineColor, b.celOutlineColor)) {
     return false;
   }
   for (int s = 0; s < 5; ++s) {

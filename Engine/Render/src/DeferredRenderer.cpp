@@ -88,7 +88,7 @@ struct MatExtConstants {
   float xfB[5][4];
   float sss[4];
 };
-void FillMatConstants(const DeferredMaterial& use, float lodFade, MatConstants& mc, MatExtConstants& mec, unsigned char* tablePx, unsigned char* linkTablePx, uint32_t& rows, uint32_t& outRow) {
+void FillMatConstants(const DeferredMaterial& use, float lodFade, MatConstants& mc, MatExtConstants& mec, unsigned char* tablePx, unsigned char* linkTablePx, unsigned char* celTablePx, uint32_t& rows, uint32_t& outRow) {
   mc.albedo[0] = use.albedo[0];
   mc.albedo[1] = use.albedo[1];
   mc.albedo[2] = use.albedo[2];
@@ -154,6 +154,32 @@ void FillMatConstants(const DeferredMaterial& use, float lodFade, MatConstants& 
       lx[1] = use.sssKind == 1 ? 255 : 0;
       lx[2] = use.sssKind == 2 ? 255 : 0;
       lx[3] = use.sssKind == 3 ? 255 : 0;
+    }
+    if (celTablePx != nullptr) {
+      float bands = (use.celBands - 1.0f) / 7.0f;
+      bands = bands < 0.0f ? 0.0f : (bands > 1.0f ? 1.0f : bands);
+      float celSpec = use.celSpecular < 0.0f ? 0.0f : (use.celSpecular > 1.0f ? 1.0f : use.celSpecular);
+      float celRim = use.celRim < 0.0f ? 0.0f : (use.celRim > 1.0f ? 1.0f : use.celRim);
+      float outline = use.celOutline < 0.0f ? 0.0f : (use.celOutline > 1.0f ? 1.0f : use.celOutline);
+      float outlineWidth = use.celOutlineWidth < 0.5f ? 0.5f : (use.celOutlineWidth > 4.0f ? 4.0f : use.celOutlineWidth);
+      float lineR = use.celOutlineColor[0] < 0.0f ? 0.0f : (use.celOutlineColor[0] > 1.0f ? 1.0f : use.celOutlineColor[0]);
+      float lineG = use.celOutlineColor[1] < 0.0f ? 0.0f : (use.celOutlineColor[1] > 1.0f ? 1.0f : use.celOutlineColor[1]);
+      float lineB = use.celOutlineColor[2] < 0.0f ? 0.0f : (use.celOutlineColor[2] > 1.0f ? 1.0f : use.celOutlineColor[2]);
+      unsigned char* cx = celTablePx + static_cast<size_t>(row) * 4;
+      cx[0] = use.celShaded ? 255 : 0;
+      cx[1] = static_cast<unsigned char>(bands * 255.0f + 0.5f);
+      cx[2] = static_cast<unsigned char>(celSpec * 255.0f + 0.5f);
+      cx[3] = static_cast<unsigned char>(celRim * 255.0f + 0.5f);
+      unsigned char* lx = celTablePx + static_cast<size_t>(256 + row) * 4;
+      lx[0] = static_cast<unsigned char>(outline * 255.0f + 0.5f);
+      lx[1] = static_cast<unsigned char>((outlineWidth - 0.5f) / 3.5f * 255.0f + 0.5f);
+      lx[2] = 0;
+      lx[3] = 0;
+      unsigned char* cc = celTablePx + static_cast<size_t>(512 + row) * 4;
+      cc[0] = static_cast<unsigned char>(lineR * 255.0f + 0.5f);
+      cc[1] = static_cast<unsigned char>(lineG * 255.0f + 0.5f);
+      cc[2] = static_cast<unsigned char>(lineB * 255.0f + 0.5f);
+      cc[3] = 255;
     }
   }
   outRow = row;
@@ -274,6 +300,7 @@ DeferredRenderer::DeferredRenderer()
   , spotCookieOn(false)
   , cookieArrayTex(0)
   , linkTable(0)
+  , celTable(0)
   , neutralBlack(0)
   , neutralAniso(0)
   , frustumValid(false)
@@ -1177,6 +1204,14 @@ bool DeferredRenderer::Initialize(IRHI* r, int vw, int vh, const char* shaderDir
   if (!rhi->UpdateTextureMip(linkTable, 0, 256, 1, 256 * 4, linkPx, sizeof(linkPx))) {
     return false;
   }
+  celTable = rhi->CreateTexture2D(256, 3, 1, RHITextureFormat::RGBA8_UNORM);
+  if (celTable == 0) {
+    return false;
+  }
+  std::memset(celPx, 0, sizeof(celPx));
+  if (!rhi->UpdateTextureMip(celTable, 0, 256, 3, 256 * 4, celPx, sizeof(celPx))) {
+    return false;
+  }
   std::memset(matTablePx, 0, sizeof(matTablePx));
   matTablePx[0] = 0;
   matTablePx[1] = 38;
@@ -1362,6 +1397,10 @@ void DeferredRenderer::Shutdown() {
   if (linkTable != 0) {
     rhi->DestroyTexture(linkTable);
     linkTable = 0;
+  }
+  if (celTable != 0) {
+    rhi->DestroyTexture(celTable);
+    celTable = 0;
   }
   if (clusterTex != 0) {
     rhi->DestroyTexture(clusterTex);
@@ -4186,6 +4225,7 @@ void DeferredRenderer::SetupGeometryPass() {
   ssaoValid = false;
   ssrValid = false;
   matTableRows = 1;
+  std::memset(celPx, 0, sizeof(celPx));
   RHIRenderTarget mrts[8] = { gAlbedo, gNormalRough, gMetallic, gPosition, gLightmap, gEmissive, gF0, gExtA };
   rhi->SetRenderTargets(8, mrts, gDepth);
   rhi->ClearRenderTarget(gAlbedo, 0.02f, 0.02f, 0.03f, 0.5f);
@@ -4574,7 +4614,7 @@ void DeferredRenderer::SetGeoMaterial(const DeferredMaterial& use, float lodFade
   MatConstants mc;
   MatExtConstants mec;
   uint32_t matRow = 0;
-  FillMatConstants(use, lodFade < 0.0f ? 0.0f : (lodFade > 1.0f ? 1.0f : lodFade), mc, mec, matTablePx, linkPx, matTableRows, matRow);
+  FillMatConstants(use, lodFade < 0.0f ? 0.0f : (lodFade > 1.0f ? 1.0f : lodFade), mc, mec, matTablePx, linkPx, celPx, matTableRows, matRow);
   (void)matRow;
   rhi->UpdateConstantBuffer(matCB, &mc, sizeof(mc));
   rhi->UpdateConstantBuffer(matExtCB, &mec, sizeof(mec));
@@ -5830,6 +5870,9 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
     rhi->UpdateConstantBuffer(ambientCB, &ambF, sizeof(ambF));
     rhi->SetPixelConstantBuffer(7, ambientCB);
   }
+  if (celTable != 0) {
+    rhi->SetPixelTexture2D(28, celTable);
+  }
   for (size_t oi = 0; oi < order.size(); ++oi) {
     const ForwardDrawItem& d = forwardDraws[order[oi]];
     bool skinned = d.boneCount > 0 && d.boneOffset != 0xFFFFFFFFu;
@@ -5853,8 +5896,12 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
     MatConstants mc;
     MatExtConstants mec;
     uint32_t matRow = 0;
-    FillMatConstants(d.mat, 0.0f, mc, mec, matTablePx, linkPx, matTableRows, matRow);
+    FillMatConstants(d.mat, 0.0f, mc, mec, matTablePx, linkPx, celPx, matTableRows, matRow);
     (void)matRow;
+    if (celTable != 0) {
+      rhi->UpdateTextureMip(celTable, 0, 256, 3, 256 * 4, celPx, sizeof(celPx));
+      rhi->SetPixelTexture2D(28, celTable);
+    }
     rhi->UpdateConstantBuffer(matCB, &mc, sizeof(mc));
     rhi->UpdateConstantBuffer(matExtCB, &mec, sizeof(mec));
     rhi->SetPixelConstantBuffer(1, matCB);
@@ -5927,6 +5974,7 @@ void DeferredRenderer::RenderForwardPass(const float camPos[3]) {
   rhi->SetPixelTexture(10, 0);
   rhi->SetPixelTexture2D(11, 0);
   rhi->SetPixelTexture2D(12, 0);
+  rhi->SetPixelTexture2D(28, 0);
   rhi->SetPixelSampler(1, 0);
   rhi->SetPixelSampler(2, 0);
   blend.enable = false;
@@ -6506,6 +6554,10 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
   if (linkTable != 0) {
     rhi->UpdateTextureMip(linkTable, 0, 256, 1, 256 * 4, linkPx, sizeof(linkPx));
     rhi->SetPixelTexture2D(24, linkTable);
+  }
+  if (celTable != 0) {
+    rhi->UpdateTextureMip(celTable, 0, 256, 3, 256 * 4, celPx, sizeof(celPx));
+    rhi->SetPixelTexture2D(28, celTable);
   }
   if (spotCookieOn && cookieArrayTex != 0) {
     rhi->SetPixelTexture2D(27, cookieArrayTex);

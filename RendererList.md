@@ -464,12 +464,12 @@ Planejado
 
 21. Cel shading
 
-- [ ] Rampa de iluminação configurável por material
+- [x] Rampa de iluminação configurável por material
 - [ ] Sombra pintada e controle de bandas
-- [ ] Especular estilizado
-- [ ] Contorno por normal/depth com espessura e cor
+- [x] Especular estilizado
+- [x] Contorno por normal/depth com espessura e cor
 - [ ] Presets de estilo (anime, cartoon, pintado)
-- [ ] Convivência com PBR na mesma cena
+- [x] Convivência com PBR na mesma cena
 - [ ] Estabilidade com TAA, sombras e pós-processamento
 - [ ] Editor de material cel shading com preview
 

@@ -56,6 +56,15 @@ void MakeDefaultMaterial(MaterialData& m) {
   m.doubleSided = false;
   m.alphaMode = 0;
   m.alphaCutoff = 0.5f;
+  m.celShaded = false;
+  m.celBands = 3.0f;
+  m.celSpecular = 0.35f;
+  m.celRim = 0.2f;
+  m.celOutline = 0.7f;
+  m.celOutlineWidth = 1.5f;
+  m.celOutlineColor[0] = 0.02f;
+  m.celOutlineColor[1] = 0.02f;
+  m.celOutlineColor[2] = 0.03f;
   for (int s = 0; s < 5; ++s) {
     m.xforms[s].offsetU = 0.0f;
     m.xforms[s].offsetV = 0.0f;

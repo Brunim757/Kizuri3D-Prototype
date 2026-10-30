@@ -38,6 +38,13 @@ struct DeferredMaterial {
   bool doubleSided = false;
   int alphaMode = 0;
   float alphaCutoff = 0.5f;
+  bool celShaded = false;
+  float celBands = 3.0f;
+  float celSpecular = 0.35f;
+  float celRim = 0.2f;
+  float celOutline = 0.7f;
+  float celOutlineWidth = 1.5f;
+  float celOutlineColor[3] = { 0.02f, 0.02f, 0.03f };
   DeferredUvXform xforms[5];
   float ior = 1.5f;
   bool hasSpecular = false;
@@ -958,6 +965,8 @@ public:
   RHITexture cookieArrayTex;
   RHITexture linkTable;
   unsigned char linkPx[256 * 4];
+  RHITexture celTable;
+  unsigned char celPx[256 * 3 * 4];
   bool CreateTargets();
   void DestroyTargets();
   void RenderShadowMaps();

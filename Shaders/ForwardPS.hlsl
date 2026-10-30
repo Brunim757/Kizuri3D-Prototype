@@ -95,6 +95,7 @@ TextureCube PointCube : register(t9);
 Texture2D MomentsTX : register(t10);
 Texture2D CookieTX : register(t11);
 Texture2DArray CookieArray : register(t12);
+Texture2D CelTX : register(t28);
 SamplerState GeoSamp : register(s0);
 SamplerState ShadowSampler : register(s1);
 SamplerState LinearSampler : register(s2);
@@ -479,8 +480,27 @@ float3 SkyGradient(float3 viewDir, float3 sunDirTo, float3 sunColor, float sunIn
     float sf = (0.15 + 0.85 * dayness) * sunIntensity;
     return sky + sunColor * glow * sf;
 }
-float3 ShadeFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0)
+float3 ShadeCelFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float3 F0, float metallic, float4 cel)
 {
+    float ndl = saturate(dot(N, L));
+    float bands = max(cel.y, 1.0);
+    float band = floor(ndl * bands + 0.5) / bands;
+    float3 H = normalize(L + V);
+    float spec = pow(saturate(dot(N, H)), lerp(160.0, 8.0, saturate(cel.z)));
+    float specMask = smoothstep(0.35, 0.55, spec);
+    float3 specTint = lerp(float3(0.04, 0.04, 0.04), F0, metallic);
+    float rim = pow(1.0 - saturate(dot(N, V)), 3.0);
+    rim *= smoothstep(-0.1, 0.4, dot(N, L));
+    float3 base = albedo * band;
+    base += (specTint * 6.0 + 0.25) * specMask * cel.z;
+    base += albedo * rim * cel.w * 0.5;
+    return base * lightColor;
+}
+float3 ShadeFwd(float3 N, float3 V, float3 L, float3 lightColor, float3 albedo, float roughness, float metallic, float3 F0, float4 cel)
+{
+    if (cel.x > 0.5) {
+        return ShadeCelFwd(N, V, L, lightColor, albedo, F0, metallic, cel);
+    }
     float3 H = normalize(L + V);
     float cosLi = saturate(dot(N, L));
     float cosLo = saturate(dot(N, V));
@@ -589,10 +609,17 @@ float4 main(PSIn pin) : SV_Target
     float isHairF = ((flags & 33554432u) != 0u) ? 1.0 : 0.0;
     float isEyeF = ((flags & 67108864u) != 0u) ? 1.0 : 0.0;
     float sssAmtF = SssPrm.a * (1.0 + isSkinF * 0.5);
+    uint celRow = (uint) (ExtE.w + 0.5);
+    if (celRow > 255u) {
+        celRow = 255u;
+    }
+    float4 celRawF = CelTX.Load(int3((int) celRow, 0, 0));
+    float4 celInfoF = float4(celRawF.r, 1.0 + celRawF.g * 7.0, celRawF.b, celRawF.a);
+    float celOnF = celInfoF.x > 0.5 ? 1.0 : 0.0;
     float3 fwdTan = normalize(pin.wtan.xyz - n * dot(n, pin.wtan.xyz) + 1e-6);
-    float3 col = ShadeFwd(n, V, Lsun, LightColor.rgb, alb, rough, metal, F0);
-    col += ShadeSssFwd(n, Lsun, LightColor.rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF);
-    col += ShadeHairFwd(n, fwdTan, V, Lsun, LightColor.rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15);
+    float3 col = ShadeFwd(n, V, Lsun, LightColor.rgb, alb, rough, metal, F0, celInfoF);
+    col += ShadeSssFwd(n, Lsun, LightColor.rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * (1.0 - celOnF);
+    col += ShadeHairFwd(n, fwdTan, V, Lsun, LightColor.rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * (1.0 - celOnF);
     int count = (int) Counts.x;
     if (count > 16) {
         count = 16;
@@ -620,9 +647,9 @@ float4 main(PSIn pin) : SV_Target
             float3 Lr = toL / max(rdist, 1e-4);
             float rrange = max(LightB[i].w, 1e-3);
             float ratt = ApplyAttenuation(rdist, rrange) * saturate(dot(-Lr, Rn) * 0.5 + 0.5);
-            col += ShadeFwd(n, V, Lr, LightC[i].rgb, alb, rough, metal, F0) * ratt;
-            col += ShadeSssFwd(n, Lr, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * ratt;
-            col += ShadeHairFwd(n, fwdTan, V, Lr, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * ratt;
+            col += ShadeFwd(n, V, Lr, LightC[i].rgb, alb, rough, metal, F0, celInfoF) * ratt;
+            col += ShadeSssFwd(n, Lr, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * ratt * (1.0 - celOnF);
+            col += ShadeHairFwd(n, fwdTan, V, Lr, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * ratt * (1.0 - celOnF);
         } else if (kind > 1.5) {
             float3 Ld = normalize(-LightA[i].xyz);
             float dirShadow = 1.0;
@@ -636,9 +663,9 @@ float4 main(PSIn pin) : SV_Target
                     }
                 }
             }
-            col += ShadeFwd(n, V, Ld, LightC[i].rgb, alb, rough, metal, F0) * dirShadow;
-            col += ShadeSssFwd(n, Ld, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * dirShadow;
-            col += ShadeHairFwd(n, fwdTan, V, Ld, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * dirShadow;
+            col += ShadeFwd(n, V, Ld, LightC[i].rgb, alb, rough, metal, F0, celInfoF) * dirShadow;
+            col += ShadeSssFwd(n, Ld, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * dirShadow * (1.0 - celOnF);
+            col += ShadeHairFwd(n, fwdTan, V, Ld, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * dirShadow * (1.0 - celOnF);
         } else {
             float3 toLight = LightA[i].xyz - pin.wpos;
             float dist = length(toLight);
@@ -680,29 +707,35 @@ float4 main(PSIn pin) : SV_Target
                     lightShadow = SamplePointPCSS(wposB, n, PointMeta.w);
                 }
             }
-            col += ShadeFwd(n, V, L, LightC[i].rgb, alb, rough, metal, F0) * att * spot * lightShadow * cookie;
-            col += ShadeSssFwd(n, L, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * att * spot * lightShadow * cookie;
-            col += ShadeHairFwd(n, fwdTan, V, L, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * att * spot * lightShadow * cookie;
+            col += ShadeFwd(n, V, L, LightC[i].rgb, alb, rough, metal, F0, celInfoF) * att * spot * lightShadow * cookie;
+            col += ShadeSssFwd(n, L, LightC[i].rgb, alb, SssPrm.rgb, sssAmtF, sssWrapF) * att * spot * lightShadow * cookie * (1.0 - celOnF);
+            col += ShadeHairFwd(n, fwdTan, V, L, LightC[i].rgb, SssPrm.rgb, isHairF * sssAmtF, 0.15) * att * spot * lightShadow * cookie * (1.0 - celOnF);
         }
     }
     float sint2 = max(SkySun.w, 1e-3);
     float3 hemi = SkyGradient(n, normalize(SkySun.xyz), SkyColor.rgb, sint2);
-    if (isSkinF > 0.5) {
+    float celAmbientF = 1.0;
+    if (celOnF > 0.5) {
+        float nduF = saturate(dot(n, float3(0.0, 1.0, 0.0)) * 0.5 + 0.5);
+        float ambBandF = floor(nduF * celInfoF.y + 0.5) / celInfoF.y;
+        celAmbientF = 0.3 + 0.9 * ambBandF;
+    }
+    if (isSkinF > 0.5 && celOnF < 0.5) {
         float rimF = pow(1.0 - saturate(dot(n, V)), 3.0);
         col += SssPrm.rgb * (rimF * sssAmtF * 0.35) * LightColor.rgb;
     }
-    if (isEyeF > 0.5) {
+    if (isEyeF > 0.5 && celOnF < 0.5) {
         float3 HeF = normalize(Lsun + V);
         float egF = pow(saturate(dot(n, HeF)), 400.0) * 2.0;
         float fresF = pow(1.0 - saturate(dot(n, V)), 5.0);
         col += (egF + fresF * 0.3) * sssAmtF * LightColor.rgb;
     }
-    col += alb * hemi * 0.5;
+    col += alb * hemi * 0.5 * celAmbientF;
     float3 R = reflect(-V, n);
     float3 cubeEnv = EnvTX.SampleLevel(GeoSamp, R, clamp(rough, 0.0, 1.0) * 6.0).rgb * GradeInfo.z;
     float3 F0e = lerp(F0, alb, metal);
     float3 fres = F0e + (1.0 - F0e) * pow(1.0 - saturate(dot(n, V)), 5.0);
-    col += cubeEnv * fres * (1.0 - rough);
+    col += cubeEnv * fres * (1.0 - rough) * (1.0 - celOnF);
     float T = ExtF.w;
     T = clamp(T, 0.0, 1.0);
     float thick = ExtH.w;

@@ -167,6 +167,15 @@ void FillDeferredFromEntity(AssetDatabase& assets, const MaterialData& m, Deferr
   partMat.doubleSided = m.doubleSided;
   partMat.alphaMode = m.alphaMode;
   partMat.alphaCutoff = m.alphaCutoff;
+  partMat.celShaded = m.celShaded;
+  partMat.celBands = m.celBands < 1.0f ? 1.0f : (m.celBands > 8.0f ? 8.0f : m.celBands);
+  partMat.celSpecular = m.celSpecular < 0.0f ? 0.0f : (m.celSpecular > 1.0f ? 1.0f : m.celSpecular);
+  partMat.celRim = m.celRim < 0.0f ? 0.0f : (m.celRim > 1.0f ? 1.0f : m.celRim);
+  partMat.celOutline = m.celOutline < 0.0f ? 0.0f : (m.celOutline > 1.0f ? 1.0f : m.celOutline);
+  partMat.celOutlineWidth = m.celOutlineWidth < 0.5f ? 0.5f : (m.celOutlineWidth > 4.0f ? 4.0f : m.celOutlineWidth);
+  partMat.celOutlineColor[0] = m.celOutlineColor[0] < 0.0f ? 0.0f : (m.celOutlineColor[0] > 1.0f ? 1.0f : m.celOutlineColor[0]);
+  partMat.celOutlineColor[1] = m.celOutlineColor[1] < 0.0f ? 0.0f : (m.celOutlineColor[1] > 1.0f ? 1.0f : m.celOutlineColor[1]);
+  partMat.celOutlineColor[2] = m.celOutlineColor[2] < 0.0f ? 0.0f : (m.celOutlineColor[2] > 1.0f ? 1.0f : m.celOutlineColor[2]);
   for (int s = 0; s < 5; ++s) {
     partMat.xforms[s].offsetU = m.xforms[s].offsetU;
     partMat.xforms[s].offsetV = m.xforms[s].offsetV;
@@ -285,6 +294,15 @@ void FillDeferredFromEntity(AssetDatabase& assets, const MaterialData& m, Deferr
   partMat.texFlags = flags;
 }
 void FillDeferredFromMesh(AssetDatabase& assets, const MeshMaterialData& mm, DeferredMaterial& partMat) {
+  partMat.celShaded = false;
+  partMat.celBands = 3.0f;
+  partMat.celSpecular = 0.35f;
+  partMat.celRim = 0.2f;
+  partMat.celOutline = 0.7f;
+  partMat.celOutlineWidth = 1.5f;
+  partMat.celOutlineColor[0] = 0.02f;
+  partMat.celOutlineColor[1] = 0.02f;
+  partMat.celOutlineColor[2] = 0.03f;
   partMat.albedo[0] = mm.albedo[0];
   partMat.albedo[1] = mm.albedo[1];
   partMat.albedo[2] = mm.albedo[2];

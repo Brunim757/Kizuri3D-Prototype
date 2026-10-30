@@ -3646,6 +3646,41 @@ bool TestComponentEquality() {
   if (Kizuri::MaterialEqual(a, b)) {
     return false;
   }
+  b = a;
+  b.celShaded = true;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
+  b = a;
+  b.celBands = 4.0f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
+  b = a;
+  b.celSpecular = 0.5f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
+  b = a;
+  b.celRim = 0.5f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
+  b = a;
+  b.celOutline = 0.4f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
+  b = a;
+  b.celOutlineWidth = 2.0f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
+  b = a;
+  b.celOutlineColor[1] = 0.4f;
+  if (Kizuri::MaterialEqual(a, b)) {
+    return false;
+  }
   Kizuri::PostData p;
   Kizuri::MakeDefaultPost(p);
   Kizuri::PostData q = p;
@@ -8200,6 +8235,137 @@ bool TestShaderLineEndings() {
     return false;
   }
   return text == "void main()\n{\n    return;\n}\n";
+}
+bool TestCelShading() {
+  Kizuri::MaterialData defaults;
+  Kizuri::MakeDefaultMaterial(defaults);
+  if (defaults.celShaded || defaults.celBands != 3.0f || defaults.celSpecular != 0.35f || defaults.celRim != 0.2f) {
+    return false;
+  }
+  if (defaults.celOutline != 0.7f || defaults.celOutlineWidth != 1.5f) {
+    return false;
+  }
+  if (defaults.celOutlineColor[0] != 0.02f || defaults.celOutlineColor[1] != 0.02f || defaults.celOutlineColor[2] != 0.03f) {
+    return false;
+  }
+  Kizuri::Scene scene;
+  Kizuri::EntityId id = scene.CreateEntity("cel");
+  Kizuri::Entity* e = scene.Get(id);
+  if (e == nullptr) {
+    return false;
+  }
+  e->hasMaterial = true;
+  Kizuri::MakeDefaultMaterial(e->material);
+  e->material.celShaded = true;
+  e->material.celBands = 5.0f;
+  e->material.celSpecular = 0.6f;
+  e->material.celRim = 0.45f;
+  e->material.celOutline = 0.8f;
+  e->material.celOutlineWidth = 2.5f;
+  e->material.celOutlineColor[0] = 0.11f;
+  e->material.celOutlineColor[1] = 0.22f;
+  e->material.celOutlineColor[2] = 0.33f;
+  Kizuri::PartMaterial part;
+  part.part = 3;
+  Kizuri::MakeDefaultMaterial(part.material);
+  part.material.celShaded = true;
+  part.material.celBands = 7.0f;
+  part.material.celSpecular = 0.9f;
+  part.material.celRim = 0.15f;
+  part.material.celOutline = 0.55f;
+  part.material.celOutlineWidth = 3.5f;
+  part.material.celOutlineColor[0] = 0.44f;
+  part.material.celOutlineColor[1] = 0.55f;
+  part.material.celOutlineColor[2] = 0.66f;
+  e->partMaterials.push_back(part);
+  const char* path = "kizuri_test_cel_tmp.kzscene";
+  std::remove(path);
+  if (!Kizuri::SaveSceneToFile(scene, path)) {
+    return false;
+  }
+  Kizuri::Scene back;
+  const bool loaded = Kizuri::LoadSceneFromFile(back, path, nullptr);
+  std::remove(path);
+  if (!loaded) {
+    return false;
+  }
+  const std::vector<Kizuri::EntityId> all = back.All();
+  if (all.size() != 1) {
+    return false;
+  }
+  const Kizuri::Entity* b = back.Get(all[0]);
+  if (b == nullptr || !b->hasMaterial || b->partMaterials.size() != 1) {
+    return false;
+  }
+  const Kizuri::MaterialData& m = b->material;
+  if (!m.celShaded || std::fabs(m.celBands - 5.0f) > 1e-5f || std::fabs(m.celSpecular - 0.6f) > 1e-5f) {
+    return false;
+  }
+  if (std::fabs(m.celRim - 0.45f) > 1e-5f || std::fabs(m.celOutline - 0.8f) > 1e-5f || std::fabs(m.celOutlineWidth - 2.5f) > 1e-5f) {
+    return false;
+  }
+  if (std::fabs(m.celOutlineColor[0] - 0.11f) > 1e-5f || std::fabs(m.celOutlineColor[1] - 0.22f) > 1e-5f || std::fabs(m.celOutlineColor[2] - 0.33f) > 1e-5f) {
+    return false;
+  }
+  const Kizuri::MaterialData& pm = b->partMaterials[0].material;
+  if (b->partMaterials[0].part != 3 || !pm.celShaded || std::fabs(pm.celBands - 7.0f) > 1e-5f) {
+    return false;
+  }
+  if (std::fabs(pm.celSpecular - 0.9f) > 1e-5f || std::fabs(pm.celRim - 0.15f) > 1e-5f) {
+    return false;
+  }
+  if (std::fabs(pm.celOutline - 0.55f) > 1e-5f || std::fabs(pm.celOutlineWidth - 3.5f) > 1e-5f) {
+    return false;
+  }
+  if (std::fabs(pm.celOutlineColor[0] - 0.44f) > 1e-5f || std::fabs(pm.celOutlineColor[1] - 0.55f) > 1e-5f || std::fabs(pm.celOutlineColor[2] - 0.66f) > 1e-5f) {
+    return false;
+  }
+  std::string ps;
+  if (!LoadShaderText("LightingPS.hlsl", ps)) {
+    return false;
+  }
+  if (ps.find('\r') != std::string::npos) {
+    return false;
+  }
+  const char* required[10] = {
+    "Texture2D CelTX : register(t28);",
+    "float3 ShadeCel(",
+    "float CelEdge(",
+    "float4 celRaw = CelTX.Load(int3((int) matID, 0, 0));",
+    "float4 celLine = CelTX.Load(int3((int) matID, 1, 0));",
+    "if (celOn > 0.5 && celLine.x > 0.001) {",
+    "celAmbient = 0.3 + 0.9 * ambBand;",
+    "ShadeOne(N, V, Lsun, LightColor.rgb, albedo, roughness, metallic, specF0, lb, celInfo)",
+    "hdr = lerp(hdr, lineCol, saturate(edge * celLine.x));",
+    "col += specAmb * (F0e * brdf.x + brdf.y) * ao * (1.0 - ccEnvF) * (1.0 - celOn);"
+  };
+  for (int i = 0; i < 10; ++i) {
+    if (ps.find(required[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  if (ps.find("CelTX : register(t25);") != std::string::npos) {
+    return false;
+  }
+  std::string fwd;
+  if (!LoadShaderText("ForwardPS.hlsl", fwd)) {
+    return false;
+  }
+  if (fwd.find('\r') != std::string::npos) {
+    return false;
+  }
+  const char* fwdRequired[4] = {
+    "Texture2D CelTX : register(t28);",
+    "float3 ShadeCelFwd(",
+    "float4 celRawF = CelTX.Load(int3((int) celRow, 0, 0));",
+    "col += cubeEnv * fres * (1.0 - rough) * (1.0 - celOnF);"
+  };
+  for (int i = 0; i < 4; ++i) {
+    if (fwd.find(fwdRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  return true;
 }
 static void TaaTestProject(const float vp[16], const float p[3], float& u, float& v) {
   const float x = p[0] * vp[0] + p[1] * vp[4] + p[2] * vp[8] + vp[12];
@@ -14331,6 +14497,7 @@ int main() {
   failures += Check("VelocityShaders", TestVelocityShaders());
   failures += Check("TessellationVelocityShaders", TestTessellationVelocityShaders());
   failures += Check("ShaderLineEndings", TestShaderLineEndings());
+  failures += Check("CelShading", TestCelShading());
   failures += Check("ShadowShaders", TestShadowShaders());
   failures += Check("AutoExposure", TestAutoExposure());
   failures += Check("CubeLut", TestCubeLut());
