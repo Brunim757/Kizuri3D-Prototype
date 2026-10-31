@@ -7,6 +7,7 @@
 #include "Kizuri/Ecs.h"
 #include "Kizuri/JobSystem.h"
 #include "Kizuri/PhysicsWorld.h"
+#include "Kizuri/PostProcess.h"
 #include "Kizuri/QualityPreset.h"
 #include "Kizuri/Scene.h"
 #include <string>
@@ -85,13 +86,7 @@ private:
   std::vector<std::string> lastDecalGuids;
   std::vector<float> lastDecalRects;
   std::string lastCookieKey;
-  float baseExposure = 1.0f;
-  int baseToneMode = 0;
-  float baseContrast = 1.0f;
-  float baseSaturation = 1.0f;
-  float baseTemp = 0.0f;
-  float baseTint = 0.0f;
-  float baseBloom = 0.5f;
+  PostSettings basePost;
   bool postVolumeActive = false;
   float lastDelta = 0.0f;
   std::string assetsRoot;

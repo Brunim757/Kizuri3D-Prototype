@@ -586,7 +586,7 @@ bool TestPostVolume() {
   if (e == nullptr || !e->hasPost) {
     return false;
   }
-  bool ok = e->post.exposure == 1.0f && e->post.size[0] == 10.0f;
+  bool ok = e->post.exposure == 1.0f && e->post.size[0] == 10.0f && e->post.temperature == 0.0f && e->post.tint == 0.0f;
   Kizuri::EditQueue edits;
   Kizuri::PostData pv = e->post;
   pv.exposure = 2.0f;
@@ -604,6 +604,161 @@ bool TestPostVolume() {
   }
   const Kizuri::Entity* e3 = scene.Get(eid);
   ok = ok && e3 != nullptr && !e3->hasPost;
+  return ok;
+}
+bool TestPostProcess() {
+  Kizuri::Scene scene;
+  const Kizuri::EntityId first = scene.CreateEntity("PostA");
+  const Kizuri::EntityId second = scene.CreateEntity("PostB");
+  const Kizuri::EntityId disabled = scene.CreateEntity("PostC");
+  Kizuri::Entity* a = scene.Get(first);
+  Kizuri::Entity* b = scene.Get(second);
+  Kizuri::Entity* c = scene.Get(disabled);
+  if (a == nullptr || b == nullptr || c == nullptr) {
+    return false;
+  }
+  a->hasPost = true;
+  Kizuri::MakeDefaultPost(a->post);
+  a->post.size[0] = 4.0f;
+  a->post.size[1] = 6.0f;
+  a->post.size[2] = 8.0f;
+  a->post.exposure = 1.6f;
+  a->post.toneMap = 1;
+  a->post.contrast = 1.25f;
+  a->post.saturation = 0.75f;
+  a->post.bloom = 0.6f;
+  a->post.temperature = 0.3f;
+  a->post.tint = -0.2f;
+  b->hasPost = true;
+  Kizuri::MakeDefaultPost(b->post);
+  b->transform.position[0] = 8.0f;
+  b->post.size[0] = 4.0f;
+  b->post.size[1] = 6.0f;
+  b->post.size[2] = 8.0f;
+  b->post.exposure = 2.2f;
+  b->post.toneMap = 2;
+  b->post.contrast = 0.9f;
+  b->post.saturation = 1.2f;
+  b->post.bloom = 0.3f;
+  b->post.temperature = 0.9f;
+  b->post.tint = 0.9f;
+  c->transform.position[0] = 20.0f;
+  std::vector<Kizuri::EntityId> ids;
+  ids.push_back(first);
+  ids.push_back(second);
+  ids.push_back(disabled);
+  const float insideA[3] = { 0.0f, 0.0f, 0.0f };
+  const float insideB[3] = { 8.0f, 0.0f, 0.0f };
+  const float between[3] = { 4.0f, 0.0f, 0.0f };
+  const float insideC[3] = { 20.0f, 0.0f, 0.0f };
+  const Kizuri::PostData* hitA = Kizuri::FindActivePostVolume(scene, ids, insideA);
+  const Kizuri::PostData* hitB = Kizuri::FindActivePostVolume(scene, ids, insideB);
+  const Kizuri::PostData* miss = Kizuri::FindActivePostVolume(scene, ids, between);
+  const Kizuri::PostData* skip = Kizuri::FindActivePostVolume(scene, ids, insideC);
+  if (hitA != &a->post || hitB != &b->post || miss != nullptr || skip != nullptr) {
+    return false;
+  }
+  const Kizuri::PostSettings base = Kizuri::MakePostSettings(1.0f, 0, 1.0f, 1.0f, 0.5f, 0.5f, 0.4f);
+  const Kizuri::PostSettings resolvedA = Kizuri::ResolvePostSettings(base, hitA);
+  bool ok = std::fabs(resolvedA.exposure - 1.6f) < 1e-6f &&
+            resolvedA.toneMap == 1 &&
+            std::fabs(resolvedA.contrast - 1.25f) < 1e-6f &&
+            std::fabs(resolvedA.saturation - 0.75f) < 1e-6f &&
+            std::fabs(resolvedA.temperature - 0.8f) < 1e-6f &&
+            std::fabs(resolvedA.tint - 0.3f) < 1e-6f &&
+            std::fabs(resolvedA.bloom - 0.6f) < 1e-6f;
+  const Kizuri::PostSettings resolvedB = Kizuri::ResolvePostSettings(base, hitB);
+  ok = ok && std::fabs(resolvedB.temperature - 1.0f) < 1e-6f && std::fabs(resolvedB.tint - 1.0f) < 1e-6f;
+  const Kizuri::PostSettings resolvedNone = Kizuri::ResolvePostSettings(base, nullptr);
+  ok = ok && resolvedNone.exposure == base.exposure &&
+       resolvedNone.toneMap == base.toneMap &&
+       resolvedNone.contrast == base.contrast &&
+       resolvedNone.saturation == base.saturation &&
+       resolvedNone.temperature == base.temperature &&
+       resolvedNone.tint == base.tint &&
+       resolvedNone.bloom == base.bloom;
+  const Kizuri::PostSettings clamped = Kizuri::MakePostSettings(20.0f, 9, -3.0f, 7.0f, 2.0f, -2.0f, 9.0f);
+  ok = ok && clamped.exposure == 8.0f &&
+       clamped.toneMap == 3 &&
+       clamped.contrast == 0.0f &&
+       clamped.saturation == 3.0f &&
+       clamped.temperature == 1.0f &&
+       clamped.tint == -1.0f &&
+       clamped.bloom == 2.0f;
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!ok || !InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  Kizuri::ApplyPostSettings(renderer, resolvedA);
+  ok = std::fabs(renderer.Exposure() - 1.6f) < 1e-5f &&
+       !renderer.AcesEnabled() &&
+       renderer.ToneMappingMode() == 1 &&
+       std::fabs(renderer.GradeContrast() - 1.25f) < 1e-5f &&
+       std::fabs(renderer.GradeSaturation() - 0.75f) < 1e-5f &&
+       std::fabs(renderer.GradeTemperature() - 0.8f) < 1e-5f &&
+       std::fabs(renderer.GradeTint() - 0.3f) < 1e-5f &&
+       std::fabs(renderer.BloomStrength() - 0.6f) < 1e-5f;
+  const Kizuri::PostSettings captured = Kizuri::CapturePostSettings(renderer);
+  ok = ok && std::fabs(captured.exposure - 1.6f) < 1e-5f &&
+       captured.toneMap == 1 &&
+       std::fabs(captured.contrast - 1.25f) < 1e-5f &&
+       std::fabs(captured.saturation - 0.75f) < 1e-5f &&
+       std::fabs(captured.temperature - 0.8f) < 1e-5f &&
+       std::fabs(captured.tint - 0.3f) < 1e-5f &&
+       std::fabs(captured.bloom - 0.6f) < 1e-5f;
+  Kizuri::ApplyPostSettings(renderer, clamped);
+  ok = ok && renderer.Exposure() == 8.0f &&
+       renderer.ToneMappingMode() == 3 &&
+       renderer.GradeContrast() == 0.0f &&
+       renderer.GradeSaturation() == 3.0f &&
+       renderer.GradeTemperature() == 1.0f &&
+       renderer.GradeTint() == -1.0f &&
+       renderer.BloomStrength() == 2.0f;
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
+  return ok;
+}
+bool TestRuntimePostPipeline() {
+  Kizuri::IRHI* rhi = nullptr;
+  Kizuri::DeferredRenderer renderer;
+  if (!InitNullRenderer(rhi, renderer)) {
+    return false;
+  }
+  float verts[12] = { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1 };
+  uint32_t idxs[3] = { 0, 1, 2 };
+  Kizuri::RHIBuffer tvb = rhi->CreateBuffer(sizeof(verts), 48, false, verts);
+  Kizuri::RHIBuffer tib = rhi->CreateBuffer(sizeof(idxs), 4, true, idxs);
+  if (tvb == 0 || tib == 0) {
+    renderer.Shutdown();
+    rhi->Shutdown();
+    Kizuri::DestroyRHI(rhi);
+    return false;
+  }
+  float view[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float proj[16] = { 1,0,0,0, 0,1,0,0, 0,0,1.1111112f,1, 0,0,-1.1111112f,0 };
+  float cam[3] = { 0, 0, 5 };
+  float ident[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+  float bmin[3] = { -1, -1, -1 };
+  float bmax[3] = { 1, 1, 1 };
+  Kizuri::DeferredMaterial tmat;
+  renderer.BeginObjects(view, proj);
+  renderer.DrawObjectEx(ident, tvb, tib, 0, 3, &tmat, 0.0f, bmin, bmax);
+  renderer.EndObjectsToBackbuffer(cam);
+  const Kizuri::RenderStats& st = renderer.GetStats();
+  const uint32_t runtimePasses = st.postPasses;
+  bool ok = st.lightingDraws == 1 && runtimePasses >= 2 && st.geometryDraws == 1;
+  renderer.BeginObjects(view, proj);
+  renderer.DrawObjectEx(ident, tvb, tib, 0, 3, &tmat, 0.0f, bmin, bmax);
+  renderer.EndObjectsToTexture(cam);
+  const uint32_t texturePasses = renderer.GetStats().postPasses;
+  ok = ok && renderer.GetStats().lightingDraws == 1 && texturePasses + 1 == runtimePasses;
+  rhi->DestroyBuffer(tvb);
+  rhi->DestroyBuffer(tib);
+  renderer.Shutdown();
+  rhi->Shutdown();
+  Kizuri::DestroyRHI(rhi);
   return ok;
 }
 bool TestClustered() {
@@ -3219,6 +3374,8 @@ bool TestSceneAllComponentsRoundTrip() {
   Kizuri::MakeDefaultPost(e->post);
   e->post.exposure = 1.25f;
   e->post.bloom = 0.4f;
+  e->post.temperature = 0.2f;
+  e->post.tint = -0.15f;
   e->hasFog = true;
   Kizuri::MakeDefaultFog(e->fog);
   e->fog.density = 0.02f;
@@ -3273,7 +3430,7 @@ bool TestSceneAllComponentsRoundTrip() {
   if (!b->hasProbe || std::fabs(b->probe.intensity - 1.75f) > 1e-4f) {
     return false;
   }
-  if (!b->hasPost || std::fabs(b->post.exposure - 1.25f) > 1e-4f) {
+  if (!b->hasPost || std::fabs(b->post.exposure - 1.25f) > 1e-4f || std::fabs(b->post.temperature - 0.2f) > 1e-4f || std::fabs(b->post.tint + 0.15f) > 1e-4f) {
     return false;
   }
   if (!b->hasFog || std::fabs(b->fog.density - 0.02f) > 1e-5f) {
@@ -3289,6 +3446,56 @@ bool TestSceneAllComponentsRoundTrip() {
     return false;
   }
   return true;
+}
+bool TestPostSerialization() {
+  const char* legacyPath = "kizuri_test_postvol_legacy.kzscene";
+  std::FILE* fp = std::fopen(legacyPath, "wb");
+  if (fp == nullptr) {
+    return false;
+  }
+  std::fprintf(fp, "KZSCENE 1\nORIGIN 0 0 0\nENTITY \"Legacy\" -1\nPOSTVOL 8 4 8 1.5 2 1.2 0.8 0.6\n");
+  std::fclose(fp);
+  Kizuri::Scene scene;
+  bool ok = Kizuri::LoadSceneFromFile(scene, legacyPath, nullptr);
+  std::remove(legacyPath);
+  if (!ok) {
+    return false;
+  }
+  const std::vector<Kizuri::EntityId> all = scene.All();
+  if (all.size() != 1) {
+    return false;
+  }
+  Kizuri::Entity* entity = scene.Get(all[0]);
+  if (entity == nullptr || !entity->hasPost) {
+    return false;
+  }
+  ok = std::fabs(entity->post.exposure - 1.5f) < 1e-5f &&
+       entity->post.toneMap == 2 &&
+       std::fabs(entity->post.contrast - 1.2f) < 1e-5f &&
+       std::fabs(entity->post.saturation - 0.8f) < 1e-5f &&
+       std::fabs(entity->post.bloom - 0.6f) < 1e-5f &&
+       std::fabs(entity->post.temperature) < 1e-6f &&
+       std::fabs(entity->post.tint) < 1e-6f;
+  entity->post.temperature = 0.35f;
+  entity->post.tint = -0.25f;
+  const char* fullPath = "kizuri_test_postvol_full.kzscene";
+  ok = ok && Kizuri::SaveSceneToFile(scene, fullPath);
+  Kizuri::Scene back;
+  ok = ok && Kizuri::LoadSceneFromFile(back, fullPath, nullptr);
+  std::remove(fullPath);
+  if (!ok) {
+    return false;
+  }
+  const std::vector<Kizuri::EntityId> loaded = back.All();
+  if (loaded.size() != 1) {
+    return false;
+  }
+  const Kizuri::Entity* restored = back.Get(loaded[0]);
+  return restored != nullptr &&
+         restored->hasPost &&
+         std::fabs(restored->post.exposure - 1.5f) < 1e-5f &&
+         std::fabs(restored->post.temperature - 0.35f) < 1e-5f &&
+         std::fabs(restored->post.tint + 0.25f) < 1e-5f;
 }
 bool TestComponentRegistry() {
   Kizuri::ComponentRegistry& reg = Kizuri::ComponentRegistry::Instance();
@@ -3698,6 +3905,16 @@ bool TestComponentEquality() {
     return false;
   }
   q.bloom = 0.1f;
+  if (Kizuri::PostEqual(p, q)) {
+    return false;
+  }
+  q = p;
+  q.temperature = 0.2f;
+  if (Kizuri::PostEqual(p, q)) {
+    return false;
+  }
+  q = p;
+  q.tint = -0.2f;
   if (Kizuri::PostEqual(p, q)) {
     return false;
   }
@@ -4265,6 +4482,8 @@ bool TestGameWorldPostVolumes() {
   firstEntity->post.contrast = 1.3f;
   firstEntity->post.saturation = 0.6f;
   firstEntity->post.bloom = 0.8f;
+  firstEntity->post.temperature = 0.4f;
+  firstEntity->post.tint = 0.2f;
   secondEntity->hasPost = true;
   secondEntity->transform.position[0] = 10.0f;
   secondEntity->post.size[0] = 4.0f;
@@ -4275,6 +4494,8 @@ bool TestGameWorldPostVolumes() {
   secondEntity->post.contrast = 0.9f;
   secondEntity->post.saturation = 1.1f;
   secondEntity->post.bloom = 0.3f;
+  secondEntity->post.temperature = -0.8f;
+  secondEntity->post.tint = 0.9f;
   world.GetRenderer().SetGrade(1.2f, false);
   world.GetRenderer().SetToneMapping(3);
   world.GetRenderer().SetGrading(0.8f, 1.4f, 0.25f, -0.1f);
@@ -4287,8 +4508,8 @@ bool TestGameWorldPostVolumes() {
             renderer.ToneMappingMode() == 0 &&
             std::fabs(renderer.GradeContrast() - 1.3f) < 1e-5f &&
             std::fabs(renderer.GradeSaturation() - 0.6f) < 1e-5f &&
-            std::fabs(renderer.GradeTemperature() - 0.25f) < 1e-5f &&
-            std::fabs(renderer.GradeTint() + 0.1f) < 1e-5f &&
+            std::fabs(renderer.GradeTemperature() - 0.65f) < 1e-5f &&
+            std::fabs(renderer.GradeTint() - 0.1f) < 1e-5f &&
             std::fabs(renderer.BloomStrength() - 0.8f) < 1e-5f;
   world.SetCameraPosition(10.0f, 0.0f, 0.0f);
   world.Render(0.0f);
@@ -4297,6 +4518,8 @@ bool TestGameWorldPostVolumes() {
        renderer.ToneMappingMode() == 2 &&
        std::fabs(renderer.GradeContrast() - 0.9f) < 1e-5f &&
        std::fabs(renderer.GradeSaturation() - 1.1f) < 1e-5f &&
+       std::fabs(renderer.GradeTemperature() + 0.55f) < 1e-5f &&
+       std::fabs(renderer.GradeTint() - 0.8f) < 1e-5f &&
        std::fabs(renderer.BloomStrength() - 0.3f) < 1e-5f;
   world.SetCameraPosition(0.0f, 0.0f, 0.0f);
   world.Render(0.0f);
@@ -4305,6 +4528,8 @@ bool TestGameWorldPostVolumes() {
        renderer.ToneMappingMode() == 0 &&
        std::fabs(renderer.GradeContrast() - 1.3f) < 1e-5f &&
        std::fabs(renderer.GradeSaturation() - 0.6f) < 1e-5f &&
+       std::fabs(renderer.GradeTemperature() - 0.65f) < 1e-5f &&
+       std::fabs(renderer.GradeTint() - 0.1f) < 1e-5f &&
        std::fabs(renderer.BloomStrength() - 0.8f) < 1e-5f;
   world.SetCameraPosition(100.0f, 0.0f, 0.0f);
   world.Render(0.0f);
@@ -4343,13 +4568,17 @@ bool TestGameWorldPostVolumes() {
   lowPost->post.size[2] = 4.0f;
   lowPost->post.exposure = 2.0f;
   lowPost->post.bloom = 0.9f;
+  lowPost->post.temperature = 0.5f;
+  lowPost->post.tint = -0.5f;
   lowWorld.SetCameraPosition(0.0f, 0.0f, 0.0f);
   lowWorld.Render(0.0f);
   lowWorld.SetCameraPosition(100.0f, 0.0f, 0.0f);
   lowWorld.Render(0.0f);
   const Kizuri::DeferredRenderer& lowRenderer = lowWorld.GetRenderer();
   ok = ok && std::fabs(lowRenderer.Exposure() - 1.0f) < 1e-5f &&
-       std::fabs(lowRenderer.BloomStrength() - 0.0f) < 1e-5f;
+       std::fabs(lowRenderer.BloomStrength() - 0.0f) < 1e-5f &&
+       std::fabs(lowRenderer.GradeTemperature()) < 1e-5f &&
+       std::fabs(lowRenderer.GradeTint()) < 1e-5f;
   lowWorld.Shutdown();
   rhi->Shutdown();
   Kizuri::DestroyRHI(rhi);
@@ -8721,6 +8950,38 @@ bool TestShadowShaders() {
     return false;
   }
   return velocityPS.find(cutoffLine) != std::string::npos;
+}
+bool TestPostShaders() {
+  std::string grade;
+  std::string copy;
+  if (!LoadShaderText("GradePS.hlsl", grade) || !LoadShaderText("CopyPS.hlsl", copy)) {
+    return false;
+  }
+  if (grade.find('\r') != std::string::npos || copy.find('\r') != std::string::npos) {
+    return false;
+  }
+  const char* gradeRequired[4] = {
+    "expo = Exposure * max(ExpTX.SampleLevel(LinearSampler, float2(0.5, 0.5), 0).r, 1e-4);",
+    "float3 con = (sat - 0.5) * Contrast + 0.5;",
+    "float3 luted = LutTX.Sample(LinearSampler, saturate(graded)).rgb;",
+    "float3 wc = c * float3(1.0 + Temperature * 0.1, 1.0, 1.0 - Temperature * 0.12);"
+  };
+  for (int i = 0; i < 4; ++i) {
+    if (grade.find(gradeRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  const char* copyRequired[3] = {
+    "Texture2D SrcTX : register(t0);",
+    "float4 main(PSIn pin) : SV_Target",
+    "return SrcTX.Sample(LinearSampler, pin.uv);"
+  };
+  for (int i = 0; i < 3; ++i) {
+    if (copy.find(copyRequired[i]) == std::string::npos) {
+      return false;
+    }
+  }
+  return true;
 }
 bool TestTaaHistory() {
   Kizuri::IRHI* rhi = Kizuri::CreateRHI(Kizuri::RHI_API::Null);
@@ -14471,6 +14732,8 @@ int main() {
   failures += Check("Gamepad", TestGamepad());
   failures += Check("DebugViews", TestDebugViews());
   failures += Check("PostVolume", TestPostVolume());
+  failures += Check("PostProcess", TestPostProcess());
+  failures += Check("RuntimePostPipeline", TestRuntimePostPipeline());
   failures += Check("Clustered", TestClustered());
   failures += Check("ForwardPlus", TestForwardPlus());
   failures += Check("GpuCulling", TestGpuCulling());
@@ -14584,6 +14847,7 @@ int main() {
   failures += Check("ShaderLineEndings", TestShaderLineEndings());
   failures += Check("CelShading", TestCelShading());
   failures += Check("ShadowShaders", TestShadowShaders());
+  failures += Check("PostShaders", TestPostShaders());
   failures += Check("AutoExposure", TestAutoExposure());
   failures += Check("CubeLut", TestCubeLut());
   failures += Check("HdrSky", TestHdrSky());
@@ -14619,6 +14883,7 @@ int main() {
   failures += Check("EditQueue", TestEditQueue());
   failures += Check("Picking", TestPicking());
   failures += Check("Scene-RoundTrip", TestSceneRoundTrip());
+  failures += Check("PostSerialization", TestPostSerialization());
   failures += Check("Scene-MaterialExt", TestSceneMaterialExt());
   failures += Check("Part-Material", TestPartMaterial());
   failures += Check("Scene-InvalidFile", TestSceneInvalid());

@@ -223,7 +223,7 @@ static void WritePost(std::FILE* fp, const Entity* e) {
     return;
   }
         const PostData& p = e->post;
-        std::fprintf(fp, "POSTVOL %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g\n", p.size[0], p.size[1], p.size[2], p.exposure, p.toneMap, p.contrast, p.saturation, p.bloom);
+        std::fprintf(fp, "POSTVOL %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g %.9g %.9g\n", p.size[0], p.size[1], p.size[2], p.exposure, p.toneMap, p.contrast, p.saturation, p.bloom, p.temperature, p.tint);
 }
 
 static void WriteFog(std::FILE* fp, const Entity* e) {
@@ -1251,10 +1251,12 @@ static bool ReadPost(const std::string& field, const std::string& rest, void* en
   PendingEntity* e = static_cast<PendingEntity*>(entity);
   if (field == "POSTVOL") {
           size_t pos = 0;
-          float pv[8] = { 10.0f, 5.0f, 10.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.8f };
+          float pv[10] = { 10.0f, 5.0f, 10.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.8f, 0.0f, 0.0f };
           if (!ParseFloats(rest, pos, pv, 8)) {
             return false;
           }
+          size_t extPos = pos;
+          ParseFloats(rest, extPos, pv + 8, 2);
           MakeDefaultPost(e->post);
           e->post.size[0] = pv[0];
           e->post.size[1] = pv[1];
@@ -1267,6 +1269,8 @@ static bool ReadPost(const std::string& field, const std::string& rest, void* en
           e->post.contrast = pv[5];
           e->post.saturation = pv[6];
           e->post.bloom = pv[7];
+          e->post.temperature = pv[8];
+          e->post.tint = pv[9];
           e->hasPost = true;
           return true;
   }

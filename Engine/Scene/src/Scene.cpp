@@ -225,6 +225,8 @@ void MakeDefaultPost(PostData& p) {
   p.contrast = 1.0f;
   p.saturation = 1.0f;
   p.bloom = 0.8f;
+  p.temperature = 0.0f;
+  p.tint = 0.0f;
 }
 void MakeDefaultFog(FogData& f) {
   f.size[0] = 12.0f;

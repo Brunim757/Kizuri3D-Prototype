@@ -594,6 +594,7 @@ public:
   RHITimestamp gpuShadowTs;
   RHITimestamp gpuLightTs;
   RHITimestamp gpuPostTs;
+  RHIRenderTarget FinalColorTarget() const;
   void NoteFullscreen();
   void NoteLighting();
   void BeginShadowSection();

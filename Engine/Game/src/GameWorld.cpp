@@ -37,46 +37,19 @@ static void SubmitSceneFog(DeferredRenderer& renderer, const Scene& scene, const
   }
 }
 void GameWorld::SubmitScenePost(const std::vector<EntityId>& ids, const float camPos[3]) {
-  const PostData* active = nullptr;
-  for (size_t i = 0; i < ids.size(); ++i) {
-    const Entity* e = scene.Get(ids[i]);
-    if (e == nullptr || !e->hasPost) {
-      continue;
-    }
-    const float hx = e->post.size[0] * 0.5f;
-    const float hy = e->post.size[1] * 0.5f;
-    const float hz = e->post.size[2] * 0.5f;
-    if (std::fabs(camPos[0] - e->transform.position[0]) <= hx &&
-        std::fabs(camPos[1] - e->transform.position[1]) <= hy &&
-        std::fabs(camPos[2] - e->transform.position[2]) <= hz) {
-      active = &e->post;
-      break;
-    }
-  }
+  const PostData* active = FindActivePostVolume(scene, ids, camPos);
   if (active == nullptr) {
     if (postVolumeActive) {
-      renderer.SetGrade(baseExposure, baseToneMode == 0);
-      renderer.SetToneMapping(baseToneMode);
-      renderer.SetGrading(baseContrast, baseSaturation, baseTemp, baseTint);
-      renderer.SetBloom(baseBloom);
+      ApplyPostSettings(renderer, basePost);
       postVolumeActive = false;
     }
     return;
   }
   if (!postVolumeActive) {
-    baseExposure = renderer.Exposure();
-    baseToneMode = renderer.ToneMappingMode();
-    baseContrast = renderer.GradeContrast();
-    baseSaturation = renderer.GradeSaturation();
-    baseTemp = renderer.GradeTemperature();
-    baseTint = renderer.GradeTint();
-    baseBloom = renderer.BloomStrength();
+    basePost = CapturePostSettings(renderer);
     postVolumeActive = true;
   }
-  renderer.SetGrade(active->exposure, active->toneMap == 0);
-  renderer.SetToneMapping(active->toneMap);
-  renderer.SetGrading(active->contrast, active->saturation, baseTemp, baseTint);
-  renderer.SetBloom(active->bloom);
+  ApplyPostSettings(renderer, ResolvePostSettings(basePost, active));
 }
 static void SelectLodGuids(AssetDatabase& assets, const DeferredRenderer& renderer, const Entity& entity, const float camPos[3], std::string guids[2], float fades[2], int& count) {
   guids[0] = entity.meshGuid;

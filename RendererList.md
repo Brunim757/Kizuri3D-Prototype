@@ -198,8 +198,11 @@ Sem Ray Tracing
 9. Post Processing
 
 - [x] HDR pipeline
+- [x] Pipeline completo no Editor e no runtime
+- [x] Blit final do alvo de cor para o backbuffer
 - [x] Exposure
 - [x] Auto Exposure
+- [x] Exposição manual multiplicando a auto-exposição
 - [x] Histogram exposure
 - [x] Tone Mapping
 - [x] ACES
@@ -214,6 +217,7 @@ Sem Ray Tracing
 - [x] Saturation
 - [x] Temperature
 - [x] Tint
+- [x] Temperatura/tint por volume como ajuste relativo
 - [x] Chromatic aberration
 - [x] Film grain
 - [x] Sharpening

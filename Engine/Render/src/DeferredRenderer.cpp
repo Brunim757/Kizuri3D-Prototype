@@ -3537,12 +3537,9 @@ void DeferredRenderer::Render(const float view[16], const float proj[16], const 
 void DeferredRenderer::RenderToTexture(const float view[16], const float proj[16], const float camPos[3]) {
   RenderInternal(view, proj, camPos, true);
 }
-void* DeferredRenderer::GetViewportTexture() {
-  if (rhi == nullptr) {
-    return nullptr;
-  }
+RHIRenderTarget DeferredRenderer::FinalColorTarget() const {
   if (debugView != 0 && debugA != 0) {
-    return rhi->GetRenderTargetSRV(debugA);
+    return debugA;
   }
   bool fsrActive = renderScale < 0.999f && fsrOut != 0;
   RHIRenderTarget rt = fsrActive ? fsrOut : gradeA;
@@ -3555,6 +3552,13 @@ void* DeferredRenderer::GetViewportTexture() {
   } else if (!filmActive && !fxaaRan && godRan && godA != 0 && !fsrActive) {
     rt = godA;
   }
+  return rt;
+}
+void* DeferredRenderer::GetViewportTexture() {
+  if (rhi == nullptr) {
+    return nullptr;
+  }
+  RHIRenderTarget rt = FinalColorTarget();
   if (rt == 0) {
     return nullptr;
   }
@@ -6063,10 +6067,10 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       ssaoVP[cc * 4 + rr] = s;
     }
   }
-  if (!captureMode && toTexture && hzbPS != 0 && hzbA[0] != 0) {
+  if (!captureMode && hzbPS != 0 && hzbA[0] != 0) {
     BuildHzb(camPos);
   }
-  if (!captureMode && toTexture && ssrOn && ssrA != 0 && ssrPS != 0) {
+  if (!captureMode && ssrOn && ssrA != 0 && ssrPS != 0) {
     SsrConstants sc;    std::memcpy(sc.viewProj, ssaoVP, sizeof(sc.viewProj));
     sc.camPos[0] = camPos[0];
     sc.camPos[1] = camPos[1];
@@ -6153,7 +6157,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
   } else if (ssrA != 0) {
     rhi->ClearRenderTarget(ssrA, 0.0f, 0.0f, 0.0f, 0.0f);
   }
-  if (!captureMode && toTexture && contactOn && contactA != 0 && contactPS != 0) {
+  if (!captureMode && contactOn && contactA != 0 && contactPS != 0) {
     SsrConstants cc;
     std::memcpy(cc.viewProj, ssaoVP, sizeof(cc.viewProj));
     cc.camPos[0] = camPos[0];
@@ -6198,7 +6202,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
   if (effAo > 3) {
     effAo = 3;
   }
-  if (!captureMode && toTexture && effAo >= 1 && ssaoA != 0 && ssaoB != 0) {
+  if (!captureMode && effAo >= 1 && ssaoA != 0 && ssaoB != 0) {
     bool useGtao = effAo >= 2 && gtaoPS != 0 && bentA != 0;
     float sq[24] = { 0.0f };
     sq[0] = ssaoRadius;
@@ -6256,10 +6260,8 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
   }
   if (captureMode && captureTarget != 0) {
     rhi->SetRenderTargets(1, &captureTarget, 0);
-  } else if (toTexture) {
-    rhi->SetRenderTargets(1, &gLight, 0);
   } else {
-    rhi->BindBackbuffer();
+    rhi->SetRenderTargets(1, &gLight, 0);
   }
   RHIViewport lvp;
   lvp.x = viewX;
@@ -6661,17 +6663,17 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
   rhi->SetPixelTexture2D(18, 0);
   rhi->SetPixelTexture2D(19, 0);
   rhi->SetPixelTexture(20, 0);
-  if (toTexture && !captureMode) {
+  if (!captureMode) {
     RunSsssBlur();
   }
-  if (toTexture && !captureMode) {
+  if (!captureMode) {
     auto fwdStart = std::chrono::steady_clock::now();
     RenderForwardPass(camPos);
     stats.msForward = ElapsedMs(fwdStart, std::chrono::steady_clock::now());
   } else {
     forwardDraws.clear();
   }
-  if (!captureMode && toTexture && debugView != 0 && debugA != 0) {
+  if (!captureMode && debugView != 0 && debugA != 0) {
     RunDebugPass(camPos);
   }
   if (captureMode) {
@@ -6682,7 +6684,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
     stats.culledDraws = culledDraws;
     return;
   }
-  if (toTexture && ssgiOn && ssgiA != 0 && ssgiPS != 0) {
+  if (ssgiOn && ssgiA != 0 && ssgiPS != 0) {
     SsrConstants sc;
     std::memcpy(sc.viewProj, ssaoVP, sizeof(sc.viewProj));
     sc.camPos[0] = camPos[0];
@@ -6740,7 +6742,7 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
   } else if (ssgiA != 0) {
     rhi->ClearRenderTarget(ssgiA, 0.0f, 0.0f, 0.0f, 0.0f);
   }
-  if (toTexture) {
+  if (!captureMode) {
     float bp[4] = { 0.8f, 0.0f, 0.0f, 0.0f };
     rhi->UpdateConstantBuffer(bloomCB, &bp, sizeof(bp));
     rhi->SetPixelConstantBuffer(0, bloomCB);
@@ -7186,6 +7188,33 @@ void DeferredRenderer::EndInternal(const float camPos[3], bool toTexture) {
       rhi->SetPixelTexture(0, fsrA);
       NoteFullscreen();
       rhi->SetPixelTexture(0, 0);
+    }
+    if (!toTexture && copyPS != 0) {
+      RHIRenderTarget finalRt = FinalColorTarget();
+      if (finalRt != 0) {
+        rhi->BindBackbuffer();
+        RHIViewport pvp;
+        pvp.x = 0.0f;
+        pvp.y = 0.0f;
+        pvp.w = static_cast<float>(outW);
+        pvp.h = static_cast<float>(outH);
+        pvp.minD = 0.0f;
+        pvp.maxD = 1.0f;
+        rhi->SetViewport(pvp);
+        RHIBlend blend;
+        blend.enable = false;
+        rhi->SetBlendState(blend);
+        RHIDepthStencil ds;
+        ds.depthEnable = false;
+        ds.depthWrite = false;
+        rhi->SetDepthStencilState(ds);
+        rhi->SetVertexShader(lightVS);
+        rhi->SetPixelShader(copyPS);
+        rhi->SetPixelSampler(0, sampler);
+        rhi->SetPixelTexture(0, finalRt);
+        NoteFullscreen();
+        rhi->SetPixelTexture(0, 0);
+      }
     }
     EndPostSection();
     auto frameEnd = std::chrono::steady_clock::now();

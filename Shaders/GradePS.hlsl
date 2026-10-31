@@ -68,7 +68,7 @@ float4 main(PSIn pin) : SV_Target
 {
     float expo = Exposure;
     if (AutoExp > 0) {
-        expo = max(ExpTX.SampleLevel(LinearSampler, float2(0.5, 0.5), 0).r, 1e-4);
+        expo = Exposure * max(ExpTX.SampleLevel(LinearSampler, float2(0.5, 0.5), 0).r, 1e-4);
     }
     float3 c = HdrTX.Sample(LinearSampler, pin.uv).rgb * expo;
     if (ToneMode == 0) {

@@ -205,6 +205,8 @@ struct PostData {
   float contrast;
   float saturation;
   float bloom;
+  float temperature;
+  float tint;
 };
 struct FogData {
   float size[3];

@@ -9,6 +9,7 @@
 #include "Kizuri/GameMaterial.h"
 #include "Kizuri/GameWorld.h"
 #include "Kizuri/Path.h"
+#include "Kizuri/PostProcess.h"
 #include "Kizuri/UiText.h"
 #include "FileDialog.h"
 #include "Kizuri/DebugDraw.h"
@@ -1422,27 +1423,10 @@ void EditorApp::SubmitSceneDraws(const float cpos[3]) {
     }
   }
   {
-    const PostData* active = nullptr;
     std::vector<EntityId> postIds = scene.All();
-    for (size_t i = 0; i < postIds.size(); ++i) {
-      const Entity* pe = scene.Get(postIds[i]);
-      if (pe == nullptr || !pe->hasPost) {
-        continue;
-      }
-      float hx = pe->post.size[0] * 0.5f;
-      float hy = pe->post.size[1] * 0.5f;
-      float hz = pe->post.size[2] * 0.5f;
-      if (std::fabs(cpos[0] - pe->transform.position[0]) <= hx && std::fabs(cpos[1] - pe->transform.position[1]) <= hy && std::fabs(cpos[2] - pe->transform.position[2]) <= hz) {
-        active = &pe->post;
-        break;
-      }
-    }
-    if (active != nullptr) {
-      renderer.SetGrade(active->exposure, active->toneMap == 0);
-      renderer.SetToneMapping(active->toneMap);
-      renderer.SetGrading(active->contrast, active->saturation, viewTemp, viewTint);
-      renderer.SetBloom(active->bloom);
-    }
+    const PostData* active = FindActivePostVolume(scene, postIds, cpos);
+    PostSettings base = MakePostSettings(viewExposure, viewToneMap, viewContrast, viewSaturation, viewTemp, viewTint, viewBloom);
+    ApplyPostSettings(renderer, ResolvePostSettings(base, active));
   }
   std::vector<EntityId> lightIds = scene.All();
   {

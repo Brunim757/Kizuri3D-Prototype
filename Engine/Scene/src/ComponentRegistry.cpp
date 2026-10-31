@@ -272,7 +272,9 @@ const InspectorFieldDesc kPostFields[] = {
   { "Tone Mapper", offsetof(PostData, toneMap), InspectorFieldKind::Enum, 1.0f, 0.0f, 0.0f, false, kToneMapLabels, kToneMapValues, 4 },
   { "Contrast", offsetof(PostData, contrast), InspectorFieldKind::Float, 0.01f, 0.2f, 2.0f },
   { "Saturation", offsetof(PostData, saturation), InspectorFieldKind::Float, 0.01f, 0.0f, 3.0f },
-  { "Bloom", offsetof(PostData, bloom), InspectorFieldKind::Float, 0.01f, 0.0f, 2.0f }
+  { "Bloom", offsetof(PostData, bloom), InspectorFieldKind::Float, 0.01f, 0.0f, 2.0f },
+  { "Temperature", offsetof(PostData, temperature), InspectorFieldKind::Float, 0.01f, -1.0f, 1.0f },
+  { "Tint", offsetof(PostData, tint), InspectorFieldKind::Float, 0.01f, -1.0f, 1.0f }
 };
 const InspectorFieldDesc kFogFields[] = {
   { "Volume Size", offsetof(FogData, size), InspectorFieldKind::Vec3, 0.1f, 0.5f, 200.0f },
@@ -563,7 +565,7 @@ bool ProbeEqual(const ProbeData& a, const ProbeData& b) {
   return Float3Equal(a.size, b.size) && a.intensity == b.intensity;
 }
 bool PostEqual(const PostData& a, const PostData& b) {
-  return Float3Equal(a.size, b.size) && a.exposure == b.exposure && a.toneMap == b.toneMap && a.contrast == b.contrast && a.saturation == b.saturation && a.bloom == b.bloom;
+  return Float3Equal(a.size, b.size) && a.exposure == b.exposure && a.toneMap == b.toneMap && a.contrast == b.contrast && a.saturation == b.saturation && a.bloom == b.bloom && a.temperature == b.temperature && a.tint == b.tint;
 }
 bool FogEqual(const FogData& a, const FogData& b) {
   return Float3Equal(a.size, b.size) && a.density == b.density && Float3Equal(a.color, b.color);
